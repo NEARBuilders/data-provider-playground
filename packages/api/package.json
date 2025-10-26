@@ -16,19 +16,19 @@
   },
   "devDependencies": {
     "tsdown": "^0.15.5",
-    "@every-plugin/template": "workspace:*"
+    "@every-plugin/template": "file:../_plugin_template"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@orpc/client": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
-    "@orpc/zod": "catalog:",
+    "@orpc/client": "^1.10.0",
+    "@orpc/openapi": "^1.10.0",
+    "@orpc/server": "^1.10.0",
+    "@orpc/zod": "^1.10.0",
     "dotenv": "^17.2.2",
-    "every-plugin": "catalog:",
-    "next": "catalog:",
-    "zod": "catalog:"
+    "every-plugin": "0.3.2",
+    "next": "16.0.0",
+    "zod": "^4.1.12"
   }
 }
