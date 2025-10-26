@@ -23,6 +23,7 @@
     "msw": "^2.3.0",
     "sirv": "^3.0.2",
     "vitest": "^3.2.4",
+    "tsx": "^4.20.6",
     "zephyr-rspack-plugin": "^0.0.1"
   },
   "scripts": {
@@ -32,6 +33,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest --config vitest.integration.config.ts",
+    "demo": "node dev/server.mjs",
+    "demo:mock": "node dev/demo.mjs",
+    "demo:live": "tsx dev/demo.ts",
     "coverage": "vitest run --coverage"
   }
 }

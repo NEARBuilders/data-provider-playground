@@ -1,6 +1,9 @@
 # Li.Fi Data Provider Plugin
 
 Production-ready Li.Fi bridge data adapter for the NEAR Intents data collection system.
+# Li.Fi Data Provider Plugin
+
+Production-ready Li.Fi bridge data adapter for the NEAR Intents data collection system.
 
 ## Provider: Li.Fi
 
@@ -22,15 +25,25 @@ Production-ready Li.Fi bridge data adapter for the NEAR Intents data collection 
 - `GET /tokens` - Supported tokens across all chains
 - `GET /quote` - Route quotes with fees and slippage parameters
 
-## Environment Variables
+## Environment variables
+
+The plugin accepts the following variables (defaults shown):
 
 ```bash
 # Optional - Li.Fi public endpoints don't require authentication
 LIFI_API_KEY=your_api_key_if_needed
 
-# Configuration (with defaults)
+# Base URL for Li.Fi API
 LIFI_BASE_URL=https://li.quest/v1
+
+# Request timeout (ms)
 LIFI_TIMEOUT=10000
+
+# Rate limiter configuration
+# max concurrent requests scheduled through the adapter
+RATE_LIMIT_CONCURRENCY=5
+# minimum milliseconds between requests
+RATE_LIMIT_MIN_TIME_MS=200
 ```
 
 ## Setup & Installation
@@ -59,13 +72,17 @@ npm run test:watch
 npm run test:integration
 ```
 
+## Local demo runner
+
+See `DEMO.md` for detailed instructions about the demo scripts (`dev/demo.mjs`, `dev/demo.ts`) and the lightweight demo server.
+
 ## Implementation Details
 
-### Precision & Reliability
-- **Decimal.js**: Precise arithmetic for `effectiveRate` calculations
-- **Raw strings preserved**: On-chain smallest units maintained as strings
-- **Exponential backoff**: Retry logic with jitter for API resilience
-- **Rate limiting**: 5 concurrent requests, 200ms minimum interval
+### Precision & reliability
+- Decimal.js: precise arithmetic for `effectiveRate` calculations
+- Raw strings preserved: on-chain smallest units are kept as strings
+- Exponential backoff: retry logic with jitter for API resilience
+- Rate limiting: configurable concurrency and min-time between requests
 
 ### Liquidity Depth Algorithm
 Uses bounded binary search to find maximum input amounts:
@@ -103,10 +120,10 @@ Implements the standard oRPC contract:
 
 ## Limitations
 
-1. **No Volume Data**: Li.Fi doesn't expose aggregated trading volumes
-2. **Liquidity Estimation**: Based on quote probing, not real-time depth
-3. **Chain Support**: Limited to Li.Fi supported networks
-4. **Rate Limits**: Conservative limits to ensure reliability
+1. No volume data: Li.Fi doesn't expose aggregated volume data via its public APIs; the plugin returns an empty `volumes` array and documents this behavior.
+2. Liquidity estimation: computed via quote probing (bounded binary search) — not the same as raw orderbook depth.
+3. Chain support: limited to networks supported by Li.Fi.
+4. Rate limits: conservative defaults are applied; tune via ENV if needed.
 
 ## Production Deployment
 
@@ -116,6 +133,3 @@ This plugin is designed for:
 - Liquidity depth analysis for routing decisions
 - Cross-chain asset availability tracking
 
-## License
-
-Part of the NEAR Intents data collection system.

@@ -7,7 +7,7 @@ import { beforeAll, afterEach, afterAll, vi } from 'vitest';
 const originalFetch = globalThis.fetch;
 
 beforeAll(() => {
-	globalThis.fetch = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+	globalThis.fetch = vi.fn(async (input: string | Request, init?: RequestInit) => {
 		const url = typeof input === 'string' ? input : (input as Request).url;
 
 		if (url.startsWith('https://li.quest/v1/tokens')) {

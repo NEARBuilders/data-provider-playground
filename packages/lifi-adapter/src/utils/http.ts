@@ -6,6 +6,32 @@ export class HttpUtils {
     minTime: 200, // 200ms between requests
   });
 
+  // store the last applied limiter configuration for diagnostics/tests
+  private static lastConfig: { maxConcurrent: number; minTime: number } | null = {
+    maxConcurrent: 5,
+    minTime: 200,
+  };
+
+  /**
+   * Configure the internal rate limiter. Call this early during plugin initialization
+   * to apply env-driven rate limits.
+   */
+  static configure(options: { maxConcurrent?: number; minTime?: number }) {
+    const cfg = {
+      maxConcurrent: options.maxConcurrent ?? 5,
+      minTime: options.minTime ?? 200,
+    };
+    this.limiter = new Bottleneck(cfg);
+    this.lastConfig = cfg;
+  }
+
+  /**
+   * Return the last applied limiter settings (useful for tests and diagnostics).
+   */
+  static getLimiterConfig() {
+    return this.lastConfig;
+  }
+
   /**
    * Fetch with exponential backoff, jitter, and rate limiting
    */
