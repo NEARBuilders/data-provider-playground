@@ -1,6 +1,6 @@
 {
   "name": "@lifi/adapter",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Li.Fi bridge data adapter for NEAR Intents",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
