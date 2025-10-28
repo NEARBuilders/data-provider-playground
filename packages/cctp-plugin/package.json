@@ -1,7 +1,7 @@
 {
-  "name": "@every-plugin/template",
-  "version": "0.0.1",
-  "description": "Template plugin for every-plugin framework",
+  "name": "@nearbuilders/cctp-plugin",
+  "version": "1.0.0",
+  "description": "Circle CCTP data provider plugin for NEAR Intents",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
