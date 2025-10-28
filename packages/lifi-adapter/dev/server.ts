@@ -27,46 +27,63 @@ const mockRoute = {
   }
 };
 
-const service = new DataProviderService(BASE_URL, 'demo-key', TIMEOUT);
+let service: DataProviderService;
+try {
+  service = new DataProviderService(BASE_URL, 'demo-key', TIMEOUT);
+} catch (err) {
+  console.error('Failed to initialize DataProviderService:', err);
+  process.exit(1);
+}
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'GET' && req.url === '/snapshot') {
-    const now = Date.now();
-    if (now - lastRequestAt < MIN_INTERVAL_MS) {
-      res.writeHead(429, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        error: 'rate_limited', 
-        retry_after_ms: MIN_INTERVAL_MS - (now - lastRequestAt) 
-      }));
+  try {
+    if (req.method === 'GET' && req.url === '/snapshot') {
+      const now = Date.now();
+      if (now - lastRequestAt < MIN_INTERVAL_MS) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          error: 'rate_limited', 
+          retry_after_ms: MIN_INTERVAL_MS - (now - lastRequestAt) 
+        }));
+        return;
+      }
+
+      lastRequestAt = now;
+
+      try {
+        const snapshot = service.getSnapshot({
+          routes: [mockRoute],
+          notionals: [NOTIONAL],
+          includeWindows: ['24h']
+        });
+
+        const result = await Effect.runPromise(snapshot);
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result, null, 2));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+
       return;
     }
 
-    lastRequestAt = now;
-
-    try {
-      const snapshot = service.getSnapshot({
-        routes: [mockRoute],
-        notionals: [NOTIONAL],
-        includeWindows: ['24h']
-      });
-
-      const result = await Effect.runPromise(snapshot);
-      
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result, null, 2));
-    } catch (err) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not_found' }));
+  } catch (err) {
+    console.error('Request handler error:', { error: err instanceof Error ? err.message : 'Unknown error' });
+    if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: String(err) }));
+      res.end(JSON.stringify({ error: 'internal_server_error' }));
     }
-
-    return;
   }
-
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not_found' }));
 });
 
 server.listen(PORT, () => {
   console.log(`TypeScript demo server listening at http://localhost:${PORT}`);
   console.log('GET /snapshot to get a live snapshot (respect RATE_LIMIT_MIN_TIME_MS)');
+}).on('error', (err) => {
+  console.error('Server failed to start:', { error: err instanceof Error ? err.message : 'Unknown error' });
+  process.exit(1);
 });

@@ -41,6 +41,21 @@ export class HttpUtils {
     maxRetries = 3,
     baseDelay = 1000
   ): Promise<T> {
+    if (!url || typeof url !== 'string') {
+      throw new Error('Valid URL is required');
+    }
+
+    if (maxRetries < 0 || baseDelay < 0) {
+      throw new Error('maxRetries and baseDelay must be non-negative');
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      throw new Error(`Invalid URL format: ${url}`);
+    }
+
     return this.limiter.schedule(async () => {
       let lastError: Error;
 
@@ -64,6 +79,15 @@ export class HttpUtils {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
 
+          try {
+            const contentType = response.headers.get('content-type');
+            if (!contentType?.includes('application/json')) {
+              throw new Error('Response is not JSON');
+            }
+          } catch {
+            throw new Error('Invalid response headers');
+          }
+
           return await response.json() as T;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -75,7 +99,7 @@ export class HttpUtils {
         }
       }
 
-      throw lastError!;
+      throw new Error(`Request failed after ${maxRetries + 1} attempts: ${lastError!.message}`);
     });
   }
 
@@ -83,9 +107,13 @@ export class HttpUtils {
    * Calculate exponential backoff with jitter
    */
   private static calculateBackoffDelay(attempt: number, baseDelay: number): number {
-    const exponentialDelay = baseDelay * Math.pow(2, attempt);
+    if (typeof attempt !== 'number' || typeof baseDelay !== 'number' || attempt < 0 || baseDelay < 0) {
+      return 1000; // Safe fallback
+    }
+    
+    const exponentialDelay = baseDelay * Math.pow(2, Math.min(attempt, 10)); // Cap attempt
     const jitter = Math.random() * 0.1 * exponentialDelay;
-    return exponentialDelay + jitter;
+    return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
   }
 
   private static sleep(ms: number): Promise<void> {

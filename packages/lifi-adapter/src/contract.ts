@@ -16,32 +16,32 @@ export const Asset = z.object({
 export const Rate = z.object({
   source: Asset,
   destination: Asset,
-  amountIn: z.string(), // in source smallest units
-  amountOut: z.string(), // in destination smallest units
-  effectiveRate: z.number().describe("amountOut/amountIn normalized for decimals"),
+  amountIn: z.string().min(1), // in source smallest units
+  amountOut: z.string().min(1), // in destination smallest units
+  effectiveRate: z.number().positive().describe("amountOut/amountIn normalized for decimals"),
   totalFeesUsd: z.number().nullable(),
-  quotedAt: z.iso.datetime(),
-});
+  quotedAt: z.string().datetime(),
+}).strict();
 
 // Liquidity depth point for a specific slippage threshold
 export const LiquidityDepthPoint = z.object({
-  maxAmountIn: z.string(), // source units
-  slippageBps: z.number(), // e.g., 50 = 0.5%
-});
+  maxAmountIn: z.string().min(1), // source units
+  slippageBps: z.number().int().min(0).max(10000), // e.g., 50 = 0.5%
+}).strict();
 
 // Liquidity depth for a route at different slippage thresholds
 export const LiquidityDepth = z.object({
-  route: z.object({ source: Asset, destination: Asset }),
-  thresholds: z.array(LiquidityDepthPoint), // include 50 and 100 bps at minimum
-  measuredAt: z.iso.datetime(),
-});
+  route: z.object({ source: Asset, destination: Asset }).strict(),
+  thresholds: z.array(LiquidityDepthPoint).min(1), // include 50 and 100 bps at minimum
+  measuredAt: z.string().datetime(),
+}).strict();
 
 // Volume metrics for a time window
 export const VolumeWindow = z.object({
   window: z.enum(["24h", "7d", "30d"]),
-  volumeUsd: z.number(),
-  measuredAt: z.iso.datetime(),
-});
+  volumeUsd: z.number().nonnegative(),
+  measuredAt: z.string().datetime(),
+}).strict();
 
 // Assets listed by the provider
 export const ListedAssets = z.object({

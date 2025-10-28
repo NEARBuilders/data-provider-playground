@@ -70,24 +70,29 @@ export class DataProviderService {
     notionals: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
+    if (!params?.routes?.length || !params?.notionals?.length) {
+      return Effect.fail(new Error('Routes and notionals are required'));
+    }
+
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[DataProviderService] Fetching snapshot for ${params.routes.length} routes`);
+        try {
+          const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+            this.getVolumes(params.includeWindows || ["24h"]),
+            this.getRates(params.routes, params.notionals),
+            this.getLiquidityDepth(params.routes),
+            this.getListedAssets()
+          ]);
 
-        // In a real implementation, these would be parallel API calls
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-          this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
-          this.getListedAssets()
-        ]);
-
-        return {
-          volumes,
-          rates,
-          liquidity,
-          listedAssets,
-        } satisfies ProviderSnapshotType;
+          return {
+            volumes,
+            rates,
+            liquidity,
+            listedAssets,
+          } satisfies ProviderSnapshotType;
+        } catch (error) {
+          throw new Error(`Snapshot fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
       },
       catch: (error: unknown) =>
         new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)
@@ -107,10 +112,24 @@ export class DataProviderService {
    * Fetch rate quotes from Li.Fi API
    */
   private async getRates(routes: Array<{ source: AssetType; destination: AssetType }>, notionals: string[]): Promise<RateType[]> {
+    if (!routes?.length || !notionals?.length) {
+      throw new Error('Routes and notionals are required for rate fetching');
+    }
+
     const rates: RateType[] = [];
 
     for (const route of routes) {
+      if (!route?.source || !route?.destination) {
+        console.warn('Invalid route structure, skipping');
+        continue;
+      }
+
       for (const notional of notionals) {
+        if (!notional || isNaN(Number(notional))) {
+          console.warn(`Invalid notional ${notional}, skipping`);
+          continue;
+        }
+
         try {
           const url = new URL(`${this.baseUrl}/quote`);
           url.searchParams.set('fromChain', route.source.chainId);
@@ -121,8 +140,11 @@ export class DataProviderService {
 
           const quote = await this.fetchWithRetry<LiFiQuote>(url.toString());
           
-          const totalFeesUsd = DecimalUtils.sumFees(quote.estimate.feeCosts);
+          if (!quote?.estimate) {
+            throw new Error('Invalid quote response structure');
+          }
 
+          const totalFeesUsd = DecimalUtils.sumFees(quote.estimate.feeCosts || []);
           const effectiveRate = DecimalUtils.calculateEffectiveRate(
             quote.estimate.fromAmount,
             quote.estimate.toAmount,
@@ -140,7 +162,7 @@ export class DataProviderService {
             quotedAt: new Date().toISOString(),
           });
         } catch (error) {
-          console.warn(`Failed to get rate for ${route.source.symbol}->${route.destination.symbol}:`, error);
+          console.error('Failed to get rate for route:', { error: error instanceof Error ? error.message : 'Unknown error' });
         }
       }
     }
@@ -154,9 +176,18 @@ export class DataProviderService {
    * Probe liquidity depth using binary search for accurate thresholds
    */
   private async getLiquidityDepth(routes: Array<{ source: AssetType; destination: AssetType }>): Promise<LiquidityDepthType[]> {
+    if (!routes?.length) {
+      throw new Error('Routes are required for liquidity depth calculation');
+    }
+
     const liquidity: LiquidityDepthType[] = [];
 
     for (const route of routes) {
+      if (!route?.source || !route?.destination) {
+        console.warn('Invalid route structure for liquidity probing, skipping');
+        continue;
+      }
+
       try {
         const thresholds = [];
         
@@ -175,7 +206,7 @@ export class DataProviderService {
               slippageBps,
             });
           } catch (error) {
-            console.warn(`Liquidity probing failed for ${slippageBps}bps:`, error);
+            console.error('Liquidity probing failed:', { slippageBps, error: error instanceof Error ? error.message : 'Unknown error' });
             // Fallback to conservative estimate
             thresholds.push({
               maxAmountIn: '1000000', // 1 USDC
@@ -184,13 +215,15 @@ export class DataProviderService {
           }
         }
 
-        liquidity.push({
-          route,
-          thresholds,
-          measuredAt: new Date().toISOString(),
-        });
+        if (thresholds.length > 0) {
+          liquidity.push({
+            route,
+            thresholds,
+            measuredAt: new Date().toISOString(),
+          });
+        }
       } catch (error) {
-        console.warn(`Failed to get liquidity for ${route.source.symbol}->${route.destination.symbol}:`, error);
+        console.error('Failed to get liquidity for route:', { error: error instanceof Error ? error.message : 'Unknown error' });
       }
     }
 
@@ -206,11 +239,25 @@ export class DataProviderService {
         `${this.baseUrl}/tokens`
       );
 
+      if (!tokens?.tokens || typeof tokens.tokens !== 'object') {
+        throw new Error('Invalid tokens response structure');
+      }
+
       const assets: AssetType[] = [];
       
       // Flatten tokens from all chains
       Object.entries(tokens.tokens).forEach(([chainId, chainTokens]) => {
+        if (!Array.isArray(chainTokens)) {
+          console.warn(`Invalid token list for chain ${chainId}`);
+          return;
+        }
+
         chainTokens.forEach(token => {
+          if (!token?.address || !token?.symbol || typeof token.decimals !== 'number') {
+            console.warn('Invalid token structure, skipping token');
+            return;
+          }
+
           assets.push({
             chainId: chainId,
             assetId: token.address,
@@ -225,7 +272,7 @@ export class DataProviderService {
         measuredAt: new Date().toISOString(),
       };
     } catch (error) {
-      console.warn('Failed to fetch Li.Fi tokens, using fallback:', error);
+      console.error('Failed to fetch Li.Fi tokens, using fallback:', error);
       
       // Fallback to common tokens
       return {

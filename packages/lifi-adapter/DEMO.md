@@ -5,7 +5,22 @@ This package includes two demo runners to inspect a generated provider snapshot 
 - `dev/demo.mjs` — JavaScript Node ESM script. Defaults to mock mode and produces a deterministic snapshot without external network calls. Use this for fast local inspection.
 - `dev/demo.ts` — TypeScript demo that runs the adapter against the real provider (live network calls). This requires `tsx` to run locally.
 
-Running the demos (from `packages/lifi-adapter`)
+## Installation
+
+Before running demos, install dependencies:
+
+```bash
+# From repository root
+npm install
+
+# Install tsx for TypeScript demo (if not already installed)
+cd packages/lifi-adapter
+npm install tsx --save-dev
+```
+
+## Running the demos
+
+From `packages/lifi-adapter` directory:
 
 ```bash
 # Start the HTTP demo server (serves GET /snapshot)

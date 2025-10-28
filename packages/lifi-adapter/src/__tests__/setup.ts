@@ -8,7 +8,12 @@ const originalFetch = globalThis.fetch;
 
 beforeAll(() => {
 	globalThis.fetch = vi.fn(async (input: string | Request, init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : (input as Request).url;
+		try {
+			const url = typeof input === 'string' ? input : (input as Request).url;
+			
+			if (!url) {
+				throw new Error('URL is required for fetch request');
+			}
 
 		if (url.startsWith('https://li.quest/v1/tokens')) {
 			return new Response(
@@ -46,8 +51,12 @@ beforeAll(() => {
 			);
 		}
 
-		if (originalFetch) return originalFetch(input as any, init);
-		throw new Error('Unhandled network request in tests: ' + url);
+			if (originalFetch) return originalFetch(input as any, init);
+			throw new Error('Unhandled network request in tests: ' + url);
+		} catch (error) {
+			console.error('Mock fetch error:', error);
+			throw error;
+		}
 	});
 });
 

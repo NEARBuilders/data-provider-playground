@@ -3,21 +3,25 @@ import Decimal from 'decimal.js';
 export const DEFAULT_BASE = process.env.LIFI_BASE_URL || 'https://li.quest/v1';
 export const DEFAULT_TIMEOUT = Number(process.env.LIFI_TIMEOUT || 10000);
 
-function timeoutPromise(ms, msg = 'Timeout') {
-  return new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
+function timeoutPromise(ms) {
+  return new Promise((_, rej) => setTimeout(() => rej(new Error('Request timeout')), ms));
 }
 
 async function fetchJson(url, timeout) {
+  if (typeof url !== 'string' || !url.startsWith('https://li.quest/')) {
+    throw new Error('Invalid URL - only Li.Fi API allowed');
+  }
+  
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
     const res = await Promise.race([fetch(url, { signal: controller.signal }), timeoutPromise(timeout)]);
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    if (!res.ok) throw new Error('Request failed');
     return await res.json();
   } catch (err) {
     clearTimeout(timer);
-    throw err;
+    throw new Error('Fetch operation failed');
   }
 }
 
