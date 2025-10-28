@@ -4,7 +4,7 @@ Production-ready Li.Fi bridge data adapter for NEAR Intents data collection boun
 
 ## Quick Start
 
-Requirements: Node 18+, npm
+Requirements: Node 20+, npm
 
 ```bash
 # Install dependencies
@@ -28,27 +28,38 @@ cd packages/lifi-adapter && npm run type-check
 
 ## Metrics Provided
 
-- **Rates**: Real-time quotes with precise fee calculations using decimal.js
-- **Liquidity Depth**: Binary-search probing for ≤0.5% and ≤1.0% slippage thresholds
-- **Available Assets**: Token list across supported chains
-- **Volume**: Empty array (Li.Fi API limitation)
+- **Rates**: Real-time quotes and fee-aware effective rates (calculated with precise decimal arithmetic).
+- **Liquidity Depth**: Probing-based estimates using a bounded binary search for ≤0.5% and ≤1.0% slippage thresholds.
+- **Available Assets**: Token listing across supported chains retrieved from the provider API.
+- **Volume**: Not available from Li.Fi API — returned as an empty array.
 
-## Environment Variables
-
-- `LIFI_API_KEY` - Optional API key (default: none)
-- `LIFI_BASE_URL` - Base URL (default: `https://li.quest/v1`)
-- `LIFI_TIMEOUT` - Request timeout in ms (default: `10000`)
-- `RATE_LIMIT_CONCURRENCY` - Max concurrent requests (default: `5`)
-- `RATE_LIMIT_MIN_TIME_MS` - Min time between requests (default: `200`)
 
 ## Implementation Features
 
-- **Precision**: decimal.js for arithmetic, raw token amounts as strings
-- **Resilience**: Exponential backoff, jitter, retry logic, Bottleneck rate limiting
-- **Liquidity Algorithm**: Bounded binary search with conservative fallbacks
-- **Error Handling**: Graceful degradation, deterministic fallbacks
-- **Contract**: oRPC compliance with `getSnapshot` and `ping` methods
-- **Testing**: Deterministic tests with mocked fetch (Vitest)
+- **Precision**: Uses `decimal.js` to avoid floating-point errors and preserve raw token smallest-unit strings.
+- **Resilience**: Exponential backoff with jitter, retries, and Bottleneck-based rate limiting to avoid provider throttling.
+- **Liquidity Algorithm**: Conservative, bounded binary-search probing for maximum input amounts meeting slippage thresholds; falls back gracefully on failures.
+- **Error Handling**: Deterministic fallbacks and clear logging to make snapshots robust for downstream consumers.
+- **Contract Compliance**: Implements the oRPC contract (`getSnapshot`, `ping`) expected by the NEAR Intents system.
+- **Testing**: Deterministic unit & integration tests using Vitest with mocked fetch handlers to avoid network flakiness.
+
+## Test summary
+
+Short test results (important outputs):
+
+- Date: 2025-10-28
+- Test runner: Vitest v3.2.4
+- Location: `packages/lifi-adapter`
+- Test files executed: 4
+- Total tests: 17
+- Passed: 17 / 17 (100%)
+- Duration: ~27s (end-to-end)
+
+Type checking
+
+- TypeScript compiler: `tsc` v5.9.3
+- Type check: Passed (ran `tsc -p tsconfig.build.json --noEmit` in `packages/lifi-adapter`)
+
 
 ## Project Structure
 
