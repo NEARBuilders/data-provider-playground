@@ -184,16 +184,13 @@ CCTPService
 
 3. **Volume Data Accuracy**: Depends on Celer cBridge API having complete transfer history
 
-See [API_STATUS.md](./API_STATUS.md) for detailed information about API availability and alternatives.
 
 ## References
 
 - **CCTP Documentation**: https://developers.circle.com/cctp
 - **CCTP APIs**: https://developers.circle.com/stablecoins/cctp-apis
 - **Celer cBridge**: https://cbridge-docs.celer.network/
-- **NEAR Intents Bounty**: [bounty.md](../../bounty.md)
 - **LLM Implementation Guide**: [LLM.txt](./LLM.txt)
-- **API Status**: [API_STATUS.md](./API_STATUS.md)
 
 ## License
 
