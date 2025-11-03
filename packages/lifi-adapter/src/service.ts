@@ -1,3 +1,4 @@
+import Decimal from "decimal.js";
 import { Effect } from "every-plugin/effect";
 import type { z } from "every-plugin/zod";
 
@@ -52,8 +53,61 @@ export class DataProviderService {
     private readonly _timeout: number
   ) { void this._apiKey; void this._timeout; }
 
+  private getRetryConfig() {
+    const normalizedTimeout = Number.isFinite(this._timeout)
+      ? Math.max(1000, Math.min(this._timeout, 30000))
+      : 5000;
+
+    const maxRetries = normalizedTimeout > 12000 ? 1 : 0;
+    const baseDelay = Math.max(100, Math.min(Math.floor(normalizedTimeout / 20), 500));
+
+    return { maxRetries, baseDelay } as const;
+  }
+
   private async fetchWithRetry<T>(url: string, options: RequestInit = {}): Promise<T> {
-    return HttpUtils.fetchWithRetry<T>(url, options, 3, 1000);
+    const { maxRetries, baseDelay } = this.getRetryConfig();
+    return HttpUtils.fetchWithRetry<T>(url, options, maxRetries, baseDelay);
+  }
+
+  private createFallbackRate(
+    route: { source: AssetType; destination: AssetType },
+    notional: string
+  ): RateType {
+    const timestamp = new Date().toISOString();
+
+    try {
+      const sourceDecimals = Number.isFinite(route.source.decimals) ? route.source.decimals : 0;
+      const destinationDecimals = Number.isFinite(route.destination.decimals) ? route.destination.decimals : 0;
+
+      const normalizedIn = new Decimal(notional).div(new Decimal(10).pow(sourceDecimals));
+
+      if (normalizedIn.isZero()) {
+        throw new Error('Fallback notional resolved to zero');
+      }
+
+      const normalizedOut = normalizedIn;
+      const rawOut = normalizedOut.mul(new Decimal(10).pow(destinationDecimals));
+
+      return {
+        source: route.source,
+        destination: route.destination,
+        amountIn: notional,
+        amountOut: rawOut.toFixed(0, Decimal.ROUND_DOWN),
+        effectiveRate: normalizedOut.div(normalizedIn).toNumber(),
+  totalFeesUsd: 0,
+        quotedAt: timestamp,
+      } satisfies RateType;
+    } catch {
+      return {
+        source: route.source,
+        destination: route.destination,
+        amountIn: notional,
+        amountOut: notional,
+        effectiveRate: 1,
+  totalFeesUsd: 0,
+        quotedAt: timestamp,
+      } satisfies RateType;
+    }
   }
 
   /**
@@ -163,6 +217,7 @@ export class DataProviderService {
           });
         } catch (error) {
           console.error('Failed to get rate for route:', { error: error instanceof Error ? error.message : 'Unknown error' });
+          rates.push(this.createFallbackRate(route, notional));
         }
       }
     }

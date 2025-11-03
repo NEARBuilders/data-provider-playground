@@ -38,7 +38,7 @@ export class LiquidityProber {
         url.searchParams.set('fromAmount', testAmount.toString());
         url.searchParams.set('slippage', slippage.toString());
 
-        await HttpUtils.fetchWithRetry<LiFiQuote>(url.toString());
+  await HttpUtils.fetchWithRetry<LiFiQuote>(url.toString(), {}, 0, 200);
         
         // Quote succeeded, try larger amount
         bestAmount = testAmount;
