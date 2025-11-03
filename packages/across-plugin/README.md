@@ -43,10 +43,10 @@ Tests pass with mock implementation and serve as validation checkpoints for your
 ```bash
 # Required
 DATA_PROVIDER_API_KEY=your_provider_api_key
-
-# Optional
-DATA_PROVIDER_BASE_URL=https://api.yourprovider.com
-DATA_PROVIDER_TIMEOUT=10000
+ACROSS_API_BASE_URL=https://across.to/api
+ACROSS_API_KEY=your_key_if_needed
+RATE_LIMIT_REQUESTS_PER_SECOND=10
+REQUEST_TIMEOUT_MS=30000
 ```
 
 ## Contract
