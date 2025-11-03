@@ -40,6 +40,4 @@ export class AcrossAPIClient {
     const response = await this.client.get('/suggested-fees', { params });
     return response.data;
   }
-  
-  // Add more methods as needed
 }
