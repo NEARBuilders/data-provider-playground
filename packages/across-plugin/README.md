@@ -42,7 +42,6 @@ Tests pass with mock implementation and serve as validation checkpoints for your
 
 ```bash
 # Required
-DATA_PROVIDER_API_KEY=your_provider_api_key
 ACROSS_API_BASE_URL=https://across.to/api
 ACROSS_API_KEY=your_key_if_needed
 RATE_LIMIT_REQUESTS_PER_SECOND=10
