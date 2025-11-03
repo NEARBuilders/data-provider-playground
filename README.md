@@ -4,25 +4,9 @@ Production-ready Li.Fi bridge data adapter for NEAR Intents data collection boun
 
 ## Quick Start
 
-Requirements: Node 20+. You can work with **Bun (recommended)** or stick with **npm** if preferred.
+Requirements: Node 20+. You can use **npm** or **Bun** (faster).
 
-### Bun workflow (recommended)
-
-```bash
-# Install dependencies
-bun install
-
-# Run tests (Bun test runner)
-cd packages/lifi-adapter && bun test
-
-# Build adapter
-cd packages/lifi-adapter && bun run build
-
-# Type check
-cd packages/lifi-adapter && bun run type-check
-```
-
-### npm workflow (compatible)
+### npm workflow
 
 ```bash
 # Install dependencies
@@ -36,6 +20,28 @@ cd packages/lifi-adapter && npm run build
 
 # Type check
 cd packages/lifi-adapter && npm run type-check
+
+# Development server (Rspack, http://localhost:3014)
+cd packages/lifi-adapter && npm run dev
+```
+
+### Bun workflow (faster alternative)
+
+```bash
+# Install dependencies
+bun install
+
+# Run tests (Bun test runner)
+cd packages/lifi-adapter && bun test
+
+# Build adapter
+cd packages/lifi-adapter && bun run build
+
+# Type check
+cd packages/lifi-adapter && bun run type-check
+
+# Development server (Rspack, http://localhost:3014)
+cd packages/lifi-adapter && bun dev
 ```
 
 ## Configuration
