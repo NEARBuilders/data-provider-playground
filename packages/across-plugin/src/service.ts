@@ -51,12 +51,6 @@ interface AcrossFeeResponse {
   estimatedFillTimeSec: number;
 }
 
-/**
- * Across Protocol Data Provider Service
- * 
- * Collects cross-chain bridge metrics from Across Protocol API.
- * Provides volume, rates, liquidity depth, and available assets data.
- */
 export class DataProviderService {
   private client: AxiosInstance;
   private rateLimiter: Bottleneck;
@@ -98,15 +92,6 @@ export class DataProviderService {
     console.log(`[AcrossDataProvider] Initialized with baseUrl: ${this.baseUrl}`);
   }
 
-  /**
-   * Get complete snapshot of provider data for given routes and notionals.
-   *
-   * This method coordinates fetching:
-   * - Volume metrics for specified time windows
-   * - Rate quotes for each route/notional combination
-   * - Liquidity depth at 50bps and 100bps thresholds
-   * - List of supported assets
-   */
   getSnapshot(params: {
     routes: Array<{ source: AssetType; destination: AssetType }>;
     notionals: string[];
@@ -138,29 +123,19 @@ export class DataProviderService {
     });
   }
 
-  /**
-   * Fetch volume metrics for specified time windows.
-   * Note: Across API may not provide historical volume data directly.
-   * This returns placeholder data - update if Across provides volume endpoints.
-   */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
     console.log(`[AcrossDataProvider] Fetching volumes for windows: ${windows.join(", ")}`);
 
-    // TODO: Implement if Across provides volume API
-    // For now, return placeholder data
+  
     const volumes: VolumeWindowType[] = windows.map(window => ({
       window,
-      volumeUsd: 0, // Placeholder - update when volume API is available
+      volumeUsd: 0, 
       measuredAt: new Date().toISOString(),
     }));
 
     return volumes;
   }
 
-  /**
-   * Fetch rate quotes for route/notional combinations.
-   * Calls Across /suggested-fees endpoint for each route and amount.
-   */
   private async getRates(
     routes: Array<{ source: AssetType; destination: AssetType }>,
     notionals: string[]
@@ -213,7 +188,6 @@ export class DataProviderService {
             `[AcrossDataProvider] Failed to fetch rate for ${route.source.symbol} -> ${route.destination.symbol}:`,
             error instanceof Error ? error.message : String(error)
           );
-          // Continue with other routes
         }
       }
     }
@@ -221,10 +195,6 @@ export class DataProviderService {
     return rates;
   }
 
-  /**
-   * Fetch liquidity depth at 50bps and 100bps thresholds.
-   * Measures slippage by testing progressively larger amounts.
-   */
   private async getLiquidityDepth(
     routes: Array<{ source: AssetType; destination: AssetType }>,
     testAmounts: string[]
@@ -258,10 +228,7 @@ export class DataProviderService {
     return liquidity;
   }
 
-  /**
-   * Measure slippage by comparing fees at different amounts.
-   * Returns thresholds for 50bps and 100bps slippage.
-   */
+ 
   private async measureSlippage(
     route: { source: AssetType; destination: AssetType },
     testAmounts: string[]
@@ -315,10 +282,7 @@ export class DataProviderService {
     ];
   }
 
-  /**
-   * Fetch list of assets supported by Across Protocol.
-   * Calls /available-routes and extracts unique assets.
-   */
+  
   private async getListedAssets(): Promise<ListedAssetsType> {
     console.log(`[AcrossDataProvider] Fetching available assets`);
 
@@ -360,9 +324,7 @@ export class DataProviderService {
     };
   }
 
-  /**
-   * Get available routes from Across API (with caching).
-   */
+  
   private async getAvailableRoutes(): Promise<AcrossRoute[]> {
     const now = Date.now();
     if (this.routesCache && now - this.routesCacheTime < this.CACHE_TTL) {
@@ -382,9 +344,6 @@ export class DataProviderService {
     return response.data;
   }
 
-  /**
-   * Get suggested fees for a transfer from Across API.
-   */
   private async getSuggestedFees(params: {
     originChainId: number;
     destinationChainId: number;
@@ -397,9 +356,6 @@ export class DataProviderService {
     return response.data;
   }
 
-  /**
-   * Calculate effective rate normalized for decimals.
-   */
   private calculateEffectiveRate(
     amountIn: string,
     amountOut: string,
@@ -413,9 +369,6 @@ export class DataProviderService {
     return amountOutNormalized / amountInNormalized;
   }
 
-  /**
-   * Get token decimals by symbol.
-   */
   private getTokenDecimals(symbol: string): number {
     const decimals: Record<string, number> = {
       USDC: 6,
@@ -433,9 +386,6 @@ export class DataProviderService {
     return decimals[symbol] || 18;
   }
 
-  /**
-   * Health check - verifies API connectivity.
-   */
   ping() {
     return Effect.tryPromise({
       try: async () => {
