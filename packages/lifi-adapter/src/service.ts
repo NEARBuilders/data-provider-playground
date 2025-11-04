@@ -255,12 +255,7 @@ export class DataProviderService {
               slippageBps,
             });
           } catch (error) {
-            console.error('Liquidity probing failed:', { slippageBps, error: error instanceof Error ? error.message : 'Unknown error' });
-            // Fallback to conservative estimate
-            thresholds.push({
-              maxAmountIn: '1000000', // 1 USDC
-              slippageBps,
-            });
+            throw new Error(`Liquidity probing failed for ${slippageBps}bps: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
 
@@ -321,26 +316,7 @@ export class DataProviderService {
         measuredAt: new Date().toISOString(),
       };
     } catch (error) {
-      console.error('Failed to fetch Li.Fi tokens, using fallback:', error);
-      
-      // Fallback to common tokens
-      return {
-        assets: [
-          {
-            chainId: "1",
-            assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
-            symbol: "USDC",
-            decimals: 6,
-          },
-          {
-            chainId: "137",
-            assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
-            symbol: "USDC",
-            decimals: 6,
-          },
-        ],
-        measuredAt: new Date().toISOString(),
-      };
+      throw new Error(`Failed to fetch Li.Fi tokens: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
