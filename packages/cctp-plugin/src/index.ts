@@ -3,7 +3,7 @@ import { Effect } from "every-plugin/effect";
 import { z } from "every-plugin/zod";
 
 import { contract } from "./contract";
-import { CCTPService } from "./cctp-service";
+import { CCTPService } from "./service";
 
 /**
  * CCTP Data Provider Plugin - Circle's Cross-Chain Transfer Protocol
@@ -26,11 +26,7 @@ export default createPlugin({
     initialBackoffMs: z.number().min(100).max(5000).default(1000),
   }),
 
-  secrets: z.object({
-    // CCTP APIs are public - no API key needed
-    // This is kept for contract compatibility but can be empty
-    apiKey: z.string().optional().default(""),
-  }),
+  secrets: z.object({}),
 
   contract,
 

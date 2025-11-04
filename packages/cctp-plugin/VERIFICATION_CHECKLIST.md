@@ -4,7 +4,7 @@
 
 ### Core Files Implemented
 
-- ✅ **src/cctp-service.ts** - Main CCTP service with real API calls (371 lines)
+- ✅ **src/service.ts** - Main CCTP service with real API calls (371 lines)
 - ✅ **src/index.ts** - Plugin configuration and router setup
 - ✅ **src/contract.ts** - Contract schema definitions (from template)
 - ✅ **package.json** - Updated with @nearbuilders/cctp-plugin ID
@@ -220,10 +220,9 @@ The plugin is functionally complete and ready for submission once tests are veri
 ```
 packages/cctp-plugin/
 ├── src/
-│   ├── cctp-service.ts          # ✅ Main implementation (371 lines)
+│   ├── service.ts               # ✅ Main implementation (371 lines)
 │   ├── index.ts                 # ✅ Plugin configuration
 │   ├── contract.ts              # ✅ Schema definitions
-│   ├── service.ts               # ⚠️  Template (keep for reference)
 │   └── __tests__/
 │       ├── unit/service.test.ts        # ✅ Updated
 │       └── integration/plugin.test.ts  # ✅ Updated

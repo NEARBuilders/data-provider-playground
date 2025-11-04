@@ -176,13 +176,23 @@ CCTPService
 
 1. **CCTP API Status**:
    - ✅ **Liquidity Depth**: Using real data from `/v2/fastBurn/USDC/allowance` (WORKING!)
-   - ❌ **Rates/Fees**: `/v2/burn/USDC/fees` returns 404, using 6 bps fallback
+   - ⚠️ **Rates/Fees**: Using 6 bps fallback - fee API integration needed for production
    - ✅ **Volume**: Using Celer cBridge API (WORKING!)
    - ✅ **Assets**: Hardcoded USDC addresses (WORKING!)
 
-2. **Rate Estimation**: Uses fallback 6 basis points (0.06%) when fees API unavailable
+2. **Fee Determination**:
+   - **Fast Transfer vs Standard Transfer**: CCTP V2 supports two transfer modes:
+     - **Standard Transfer**: 0 bps (free), takes 13-19 minutes, uses finalized block confirmations
+     - **Fast Transfer**: 1-14 bps depending on source chain (most: 1 bps), completes in <30 seconds, uses confirmed (soft finality) blocks
+   - Some chains (Avalanche, Polygon PoS, Sonic) don't support Fast Transfer because their standard attestation is already fast
+   - **Current Implementation**: Uses 6 bps as average fallback estimate
+   - **Production Recommendation**: Integrate the `/v2/burn/USDC/fees` API endpoint to get real-time, chain-specific fees before each transaction
+   - **Fee API Documentation**: https://developers.circle.com/api-reference/cctp/all/get-burn-usdc-fees
+   - **FastBurn Endpoint**: The deprecated `/v2/fastBurn/USDC/fees` endpoint has been replaced by `/v2/burn/USDC/fees` which returns fees for both transfer types
 
 3. **Volume Data Accuracy**: Depends on Celer cBridge API having complete transfer history
+
+4. **Chain Support**: Currently configured for 6 primary EVM chains. CCTP supports additional chains including Solana, Linea, Sonic, Unichain, World Chain, Codex, and Sei. See: https://developers.circle.com/stablecoins/cctp-supported-blockchains
 
 
 ## References

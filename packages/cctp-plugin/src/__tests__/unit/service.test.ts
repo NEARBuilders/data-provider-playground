@@ -1,6 +1,6 @@
 import { Effect } from "every-plugin/effect";
 import { describe, expect, it } from "vitest";
-import { CCTPService } from "../../cctp-service";
+import { CCTPService } from "../../service";
 
 // Mock route for testing - Ethereum to Polygon
 const mockRoute = {
