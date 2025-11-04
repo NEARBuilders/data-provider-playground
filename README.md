@@ -47,8 +47,11 @@ cd packages/lifi-adapter && bun dev
 ## Configuration
 
 - Copy `packages/lifi-adapter/.env.example` to `.env` (same folder) and adjust as needed.
-- `LIFI_BASE_URL`, `LIFI_TIMEOUT`, `LIFI_MAX_CONCURRENT`, and `LIFI_MIN_TIME` map directly to plugin variables for base URL, request timeout, and rate limiting.
-- `LIFI_API_KEY` is optional; supply it if you have elevated Li.Fi access, otherwise the adapter falls back to public endpoints.
+- **Variables**:
+  - `LIFI_BASE_URL`: Li.Fi API base URL (default: `https://li.quest/v1`)
+  - `LIFI_MAX_CONCURRENT`: Rate limiter concurrency (default: `5`)
+  - `LIFI_MIN_TIME`: Minimum time between requests in ms (default: `200`)
+- **Note**: Li.Fi public APIs do not require authentication; the adapter uses public endpoints by default.
 
 ## Provider Details
 

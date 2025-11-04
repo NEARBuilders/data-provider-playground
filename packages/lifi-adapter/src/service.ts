@@ -46,20 +46,14 @@ type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
  */
 export class DataProviderService {
   constructor(
-    private readonly baseUrl: string,
-    // Li.Fi public endpoints do not require an API key; accept it for compatibility
-    // with the template signature but don't require its presence.
-    private readonly _apiKey: string | undefined,
-    private readonly _timeout: number
-  ) { void this._apiKey; void this._timeout; }
+    private readonly baseUrl: string
+  ) { }
 
   private getRetryConfig() {
-    const normalizedTimeout = Number.isFinite(this._timeout)
-      ? Math.max(1000, Math.min(this._timeout, 30000))
-      : 5000;
-
-    const maxRetries = normalizedTimeout > 12000 ? 1 : 0;
-    const baseDelay = Math.max(100, Math.min(Math.floor(normalizedTimeout / 20), 500));
+    // Li.Fi uses sensible defaults for retry logic
+    // Single retry with 200ms base delay for timeout-aware behavior
+    const maxRetries = 1;
+    const baseDelay = 200;
 
     return { maxRetries, baseDelay } as const;
   }

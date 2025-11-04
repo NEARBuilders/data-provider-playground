@@ -33,11 +33,10 @@ const TEST_PLUGIN_MAP = {
 const TEST_CONFIG = {
   variables: {
     baseUrl: "https://li.quest/v1",
-    timeout: 5000,
+    rateLimitConcurrency: 5,
+    rateLimitMinTimeMs: 200,
   },
-  secrets: {
-    apiKey: "test-api-key",
-  },
+  secrets: {},
 };
 
 describe("Data Provider Plugin Integration Tests", () => {

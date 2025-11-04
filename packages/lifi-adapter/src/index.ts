@@ -19,17 +19,13 @@ export default createPlugin({
 
   variables: z.object({
     baseUrl: z.string().url().default("https://li.quest/v1"),
-    timeout: z.number().min(1000).max(60000).default(10000),
     // Rate limiter settings (make per-provider limits configurable via ENV)
     rateLimitConcurrency: z.number().int().min(1).default(5),
     rateLimitMinTimeMs: z.number().int().min(0).default(200),
   }),
 
-  // Li.Fi public endpoints do not require an API key. Keep it optional for
-  // users who may have an API key for higher rate limits or private access.
-  secrets: z.object({
-    apiKey: z.string().optional(),
-  }).optional(),
+  // Li.Fi public endpoints do not require authentication
+  secrets: z.object({}).optional(),
 
   contract,
 
@@ -43,10 +39,7 @@ export default createPlugin({
 
       // Create service instance with config
       const service = new DataProviderService(
-        config.variables.baseUrl,
-        // pass optional apiKey (may be undefined)
-        config.secrets?.apiKey,
-        config.variables.timeout
+        config.variables.baseUrl
       );
 
       // Test the connection during initialization
