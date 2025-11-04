@@ -1,16 +1,13 @@
 import { publicProcedure } from "../index";
-import { dataProviderRouter } from "../runtime";
+import { plugins } from "../plugins";
 import type { RouterClient } from "@orpc/server";
 
-export const appRouter = publicProcedure.router({
+export const appRouter = {
 	healthCheck: publicProcedure.handler(() => {
 		return "OK";
 	}),
-	dataProvider: {
-		getSnapshot: dataProviderRouter.getSnapshot,
-		ping: dataProviderRouter.ping,
-	},
-});
+	dataProvider: publicProcedure.router(plugins.template.router)
+};
 
 export type AppRouter = typeof appRouter;
 export type AppRouterClient = RouterClient<typeof appRouter>;

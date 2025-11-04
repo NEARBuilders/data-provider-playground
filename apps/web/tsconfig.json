@@ -27,7 +27,7 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
   },
   "include": [
     "./next-env.d.ts",
@@ -39,5 +39,6 @@
   ],
   "exclude": [
     "./node_modules"
-  ]
+  ],
+  "references": [ { "path": "../../packages/api"}]
 }

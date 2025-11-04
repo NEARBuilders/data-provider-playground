@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.0"
   },
   "devDependencies": {
     "@effect/language-service": "^0.41.1",
@@ -18,6 +18,7 @@
     "every-plugin": "catalog:",
     "msw": "^2.3.0",
     "sirv": "^3.0.2",
+    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4",
     "zephyr-rspack-plugin": "link:zephyr-rspack-plugin"
   },

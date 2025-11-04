@@ -5,7 +5,6 @@ import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { RPCHandler } from "@orpc/server/fetch";
 import { onError } from "@orpc/server";
-import { NextRequest } from "next/server";
 
 const rpcHandler = new RPCHandler(appRouter, {
 	interceptors: [
@@ -27,7 +26,7 @@ const apiHandler = new OpenAPIHandler(appRouter, {
 	],
 });
 
-async function handleRequest(req: NextRequest) {
+async function handleRequest(req: Request) {
 	const rpcResult = await rpcHandler.handle(req, {
 		prefix: "/api/rpc",
 		context: await createContext(req),

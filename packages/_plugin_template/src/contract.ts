@@ -1,4 +1,3 @@
-import { CommonPluginErrors } from "every-plugin";
 import { oc } from "every-plugin/orpc";
 import { z } from "every-plugin/zod";
 
@@ -69,8 +68,7 @@ export const contract = oc.router({
       includeWindows: z.array(z.enum(["24h", "7d", "30d"]))
         .default(["24h"]).optional(),
     }))
-    .output(ProviderSnapshot)
-    .errors(CommonPluginErrors),
+    .output(ProviderSnapshot),
 
   // Health check procedure
   ping: oc
@@ -79,5 +77,4 @@ export const contract = oc.router({
       status: z.literal('ok'),
       timestamp: z.string().datetime(),
     }))
-    .errors(CommonPluginErrors),
 });

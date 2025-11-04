@@ -28,7 +28,6 @@
     "@orpc/zod": "catalog:",
     "dotenv": "^17.2.2",
     "every-plugin": "catalog:",
-    "next": "catalog:",
     "zod": "catalog:"
   }
 }

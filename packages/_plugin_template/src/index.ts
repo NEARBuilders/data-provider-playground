@@ -14,8 +14,6 @@ import { DataProviderService } from "./service";
  * 
  */
 export default createPlugin({
-  id: "@every-plugin/template",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://api.example.com"),
     timeout: z.number().min(1000).max(60000).default(10000),
@@ -25,7 +23,7 @@ export default createPlugin({
     apiKey: z.string().min(1, "API key is required"),
   }),
 
-  contract,
+  contract: contract,
 
   initialize: (config) =>
     Effect.gen(function* () {
