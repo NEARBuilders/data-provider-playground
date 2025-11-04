@@ -59,6 +59,20 @@ interface AcrossLimits {
   maxDepositShortDelay: string;
 }
 
+interface FeeComparison {
+  amount: string;
+  amountDecimal: number;
+  fees: AcrossSuggestedFees;
+  totalFeesUsd: number | null;
+  effectiveRate: number;
+  feeBreakdown: {
+    capitalFeePct: number;
+    relayGasFeePct: number;
+    lpFeePct: number;
+    totalRelayFeePct: number;
+  };
+}
+
 /**
  * Data Provider Service for Across Protocol
  */
@@ -160,51 +174,25 @@ export class DataProviderService {
     destination: AssetType,
     amount: string
   ): Promise<RateType> {
-    const url = new URL(`${this.baseUrl}/suggested-fees`);
-    url.searchParams.set('inputToken', source.assetId);
-    url.searchParams.set('outputToken', destination.assetId);
-    url.searchParams.set('originChainId', source.chainId);
-    url.searchParams.set('destinationChainId', destination.chainId);
-    url.searchParams.set('amount', amount);
+    const data = await this.fetchSuggestedFees(source, destination, amount);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    // Calculate effective rate with decimal normalization
+    const amountInDecimal = this.toDecimal(amount, source.decimals);
+    const amountOutDecimal = this.toDecimal(data.outputAmount, destination.decimals);
+    const effectiveRate = amountInDecimal > 0 ? amountOutDecimal / amountInDecimal : 0;
 
-    try {
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      });
+    // Calculate total fees in USD (approximate based on input amount)
+    const totalFeesUsd = this.calculateTotalFeesUsd(data, amountInDecimal, source.symbol);
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      const data: AcrossSuggestedFees = await response.json();
-
-      // Calculate effective rate with decimal normalization
-      const amountInDecimal = this.toDecimal(amount, source.decimals);
-      const amountOutDecimal = this.toDecimal(data.outputAmount, destination.decimals);
-      const effectiveRate = amountInDecimal > 0 ? amountOutDecimal / amountInDecimal : 0;
-
-      // Calculate total fees in USD (approximate based on input amount)
-      const totalFeesUsd = this.calculateTotalFeesUsd(data, amountInDecimal, source.symbol);
-
-      return {
-        source,
-        destination,
-        amountIn: amount,
-        amountOut: data.outputAmount,
-        effectiveRate,
-        totalFeesUsd,
-        quotedAt: new Date().toISOString(),
-      };
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    return {
+      source,
+      destination,
+      amountIn: amount,
+      amountOut: data.outputAmount,
+      effectiveRate,
+      totalFeesUsd,
+      quotedAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -273,6 +261,72 @@ export class DataProviderService {
   }
 
   /**
+   * Fetch suggested fees for multiple test amounts and compare them
+   * This complements liquidity determination by showing how fees vary across different amounts
+   */
+  async compareFeesAcrossAmounts(
+    route: { source: AssetType; destination: AssetType },
+    testAmounts: string[]
+  ): Promise<FeeComparison[]> {
+    const comparisons: FeeComparison[] = [];
+
+    for (const amount of testAmounts) {
+      try {
+        const fees = await this.fetchSuggestedFees(
+          route.source,
+          route.destination,
+          amount
+        );
+
+        const amountInDecimal = this.toDecimal(amount, route.source.decimals);
+        const amountOutDecimal = this.toDecimal(fees.outputAmount, route.destination.decimals);
+        const effectiveRate = amountInDecimal > 0 ? amountOutDecimal / amountInDecimal : 0;
+        const totalFeesUsd = this.calculateTotalFeesUsd(fees, amountInDecimal, route.source.symbol);
+
+        comparisons.push({
+          amount,
+          amountDecimal: amountInDecimal,
+          fees,
+          totalFeesUsd,
+          effectiveRate,
+          feeBreakdown: {
+            capitalFeePct: parseFloat(fees.capitalFeePct),
+            relayGasFeePct: parseFloat(fees.relayGasFeePct),
+            lpFeePct: parseFloat(fees.lpFeePct),
+            totalRelayFeePct: parseFloat(fees.totalRelayFee.pct),
+          },
+        });
+
+        // Small delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.warn(`[Across] Failed to fetch fees for amount ${amount}`, error);
+      }
+    }
+
+    return comparisons;
+  }
+
+  /**
+   * Fetch suggested fees from Across API (raw response)
+   * Returns the full fee breakdown structure
+   */
+  private async fetchSuggestedFees(
+    source: AssetType,
+    destination: AssetType,
+    amount: string
+  ): Promise<AcrossSuggestedFees> {
+    const url = new URL(`${this.baseUrl}/suggested-fees`);
+    url.searchParams.set('inputToken', source.assetId);
+    url.searchParams.set('outputToken', destination.assetId);
+    url.searchParams.set('originChainId', source.chainId);
+    url.searchParams.set('destinationChainId', destination.chainId);
+    url.searchParams.set('amount', amount);
+
+    return this.fetchJson<AcrossSuggestedFees>(url);
+  }
+
+  /**
    * Fetch deposit limits from Across API
    */
   private async fetchLimits(source: AssetType, destination: AssetType): Promise<AcrossLimits> {
@@ -281,26 +335,7 @@ export class DataProviderService {
     url.searchParams.set('originChainId', source.chainId);
     url.searchParams.set('destinationChainId', destination.chainId);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      return await response.json();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    return this.fetchJson<AcrossLimits>(url);
   }
 
   /**
@@ -359,87 +394,67 @@ export class DataProviderService {
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     const url = new URL(`${this.baseUrl}/available-routes`);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const routes = await this.fetchJson<AcrossRoute[]>(url);
 
-    try {
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      });
+    // Extract unique assets from routes
+    const uniqueTokens = new Map<string, { chainId: string; address: string }>();
 
-      clearTimeout(timeoutId);
+    for (const route of routes) {
+      if (!route.enabled) continue;
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      const originKey = `${route.originChainId}-${route.originToken}`;
+      const destKey = `${route.destinationChainId}-${route.destinationToken}`;
+
+      if (!uniqueTokens.has(originKey)) {
+        uniqueTokens.set(originKey, {
+          chainId: route.originChainId.toString(),
+          address: route.originToken,
+        });
       }
 
-      const routes: AcrossRoute[] = await response.json();
-
-      // Extract unique assets from routes
-      const uniqueTokens = new Map<string, { chainId: string; address: string }>();
-
-      for (const route of routes) {
-        if (!route.enabled) continue;
-
-        const originKey = `${route.originChainId}-${route.originToken}`;
-        const destKey = `${route.destinationChainId}-${route.destinationToken}`;
-
-        if (!uniqueTokens.has(originKey)) {
-          uniqueTokens.set(originKey, {
-            chainId: route.originChainId.toString(),
-            address: route.originToken,
-          });
-        }
-
-        if (!uniqueTokens.has(destKey)) {
-          uniqueTokens.set(destKey, {
-            chainId: route.destinationChainId.toString(),
-            address: route.destinationToken,
-          });
-        }
+      if (!uniqueTokens.has(destKey)) {
+        uniqueTokens.set(destKey, {
+          chainId: route.destinationChainId.toString(),
+          address: route.destinationToken,
+        });
       }
-
-      // Fetch REAL metadata from blockchain in batch
-      // Gracefully falls back to showing address if RPC unavailable
-      console.log(`[Across] Fetching real token metadata for ${uniqueTokens.size} tokens from blockchain...`);
-      
-      const tokenList = Array.from(uniqueTokens.values());
-      const metadataMap = await fetchTokenMetadataBatch(tokenList);
-
-      // Build assets with real metadata or graceful fallback
-      const assets: AssetType[] = [];
-      for (const [key, token] of uniqueTokens.entries()) {
-        const metadata = metadataMap.get(`${token.chainId}:${token.address.toLowerCase()}`);
-        
-        if (metadata) {
-          // ✅ REAL DATA from blockchain
-          assets.push({
-            chainId: token.chainId,
-            assetId: token.address,
-            symbol: metadata.symbol,
-            decimals: metadata.decimals,
-          });
-        } else {
-          // Graceful fallback if RPC unavailable (e.g., in tests or network issues)
-          assets.push({
-            chainId: token.chainId,
-            assetId: token.address,
-            symbol: token.address.slice(0, 10), // Show first 10 chars of address
-            decimals: 18, // Safe default for most ERC20 tokens
-          });
-        }
-      }
-
-      return {
-        assets,
-        measuredAt: new Date().toISOString(),
-      };
-    } finally {
-      clearTimeout(timeoutId);
     }
+
+    // Fetch REAL metadata from blockchain in batch
+    // Gracefully falls back to showing address if RPC unavailable
+    console.log(`[Across] Fetching real token metadata for ${uniqueTokens.size} tokens from blockchain...`);
+    
+    const tokenList = Array.from(uniqueTokens.values());
+    const metadataMap = await fetchTokenMetadataBatch(tokenList);
+
+    // Build assets with real metadata or graceful fallback
+    const assets: AssetType[] = [];
+    for (const [key, token] of uniqueTokens.entries()) {
+      const metadata = metadataMap.get(`${token.chainId}:${token.address.toLowerCase()}`);
+      
+      if (metadata) {
+        // ✅ REAL DATA from blockchain
+        assets.push({
+          chainId: token.chainId,
+          assetId: token.address,
+          symbol: metadata.symbol,
+          decimals: metadata.decimals,
+        });
+      } else {
+        // Graceful fallback if RPC unavailable (e.g., in tests or network issues)
+        assets.push({
+          chainId: token.chainId,
+          assetId: token.address,
+          symbol: token.address.slice(0, 10), // Show first 10 chars of address
+          decimals: 18, // Safe default for most ERC20 tokens
+        });
+      }
+    }
+
+    return {
+      assets,
+      measuredAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -480,6 +495,37 @@ export class DataProviderService {
 
   // REMOVED: inferSymbolFromAddress and inferDecimalsFromToken
   // Now using REAL on-chain data via fetchTokenMetadata()
+
+  /**
+   * Generic HTTP client helper for fetching JSON from Across API
+   */
+  private async fetchJson<T>(url: URL): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: this.getHeaders(),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request timeout after ${this.timeout}ms`);
+      }
+      throw error;
+    }
+  }
 
   /**
    * Get HTTP headers for Across API requests
