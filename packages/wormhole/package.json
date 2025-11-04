@@ -1,10 +1,13 @@
 {
-  "name": "@every-plugin/template",
+  "name": "@every-plugin/wormhole",
   "version": "0.0.1",
-  "description": "Template plugin for every-plugin framework",
+  "description": "Wormhole bridge data adapter for NEAR Intents",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },

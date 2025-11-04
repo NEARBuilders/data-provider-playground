@@ -27,7 +27,7 @@ bun dev
 ### 1. Copy the Template
 
 ```bash
-cp -r packages/_plugin_template packages/your-provider-plugin
+cp -r packages/_plugin_template packages/wormhole
 cd packages/your-provider-plugin
 ```
 
