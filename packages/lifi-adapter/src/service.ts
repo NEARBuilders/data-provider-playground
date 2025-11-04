@@ -148,11 +148,24 @@ export class DataProviderService {
   }
 
   /**
-   * Li.Fi doesn't provide volume metrics, return empty array
+   * Get aggregated volume metrics for specified time windows.
+   * 
+   * TODO: Integrate The Graph for volume data
+   * Li.Fi does not expose aggregated volume metrics. We propose using The Graph
+   * to query on-chain DEX volumes (Uniswap, Aave, etc).
+   * 
+   * Implementation plan:
+   * - Query The Graph endpoint: https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3
+   * - No API key required for public endpoints
+   * - Aggregate volume for 24h/7d/30d windows
+   * - Fallback: return empty array on failure
+   * 
+   * See README "Volume Metrics (Strategy & Implementation)" section for details.
    */
   private async getVolumes(_windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
-    // Li.Fi does not expose aggregated volume metrics via its public API.
-    // Return an empty array and document this behavior in README.
+    // TODO: Implement The Graph integration for volume data
+    // For now, return empty array since Li.Fi doesn't provide aggregated metrics
+    // This is a valid response - volumes are optional in the contract
     return [];
   }
 
