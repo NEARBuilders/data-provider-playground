@@ -7,20 +7,20 @@ import DataProviderTemplatePlugin from "../../index";
 const mockRoute = {
   source: {
     chainId: "1",
-    assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
+    assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     symbol: "USDC",
     decimals: 6,
   },
   destination: {
     chainId: "137",
-    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
+    assetId: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
     symbol: "USDC",
     decimals: 6,
   }
 };
 
 const TEST_REGISTRY: PluginRegistry = {
-  "@every-plugin/template": {
+  "@misbah/lifi": {
     remoteUrl: "http://localhost:3000/remoteEntry.js",
     version: "1.0.0",
     description: "Data provider template for integration testing",
@@ -28,16 +28,16 @@ const TEST_REGISTRY: PluginRegistry = {
 };
 
 const TEST_PLUGIN_MAP = {
-  "@every-plugin/template": DataProviderTemplatePlugin,
+  "@misbah/lifi": DataProviderTemplatePlugin,
 } as const;
 
 const TEST_CONFIG = {
   variables: {
-    baseUrl: "https://api.example.com",
-    timeout: 5000,
+    baseUrl: "https://li.quest/v1",
+    timeout: 10000,
   },
   secrets: {
-    apiKey: "test-api-key",
+    DATA_PROVIDER_API_KEY: "",
   },
 };
 
@@ -45,20 +45,20 @@ describe("Data Provider Plugin Integration Tests", () => {
   const runtime = createLocalPluginRuntime<typeof TEST_PLUGIN_MAP>(
     {
       registry: TEST_REGISTRY,
-      secrets: { API_KEY: "test-api-key" },
+      secrets: { DATA_PROVIDER_API_KEY: "" },
     },
     TEST_PLUGIN_MAP
   );
 
   beforeAll(async () => {
-    const { initialized } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+    const { initialized } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
     expect(initialized).toBeDefined();
-    expect(initialized.plugin.id).toBe("@every-plugin/template");
+    expect(initialized.plugin.id).toBe("@misbah/lifi");
   });
 
   describe("getSnapshot procedure", () => {
     it("should fetch complete snapshot successfully", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -84,7 +84,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return volumes for requested time windows", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -100,7 +100,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should generate rates for all route/notional combinations", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -115,7 +115,8 @@ describe("Data Provider Plugin Integration Tests", () => {
       const rate = result.rates[0];
       expect(rate.source).toEqual(mockRoute.source);
       expect(rate.destination).toEqual(mockRoute.destination);
-      expect(rate.amountIn).toBe("1000");
+             // amountIn is in smallest units (1000 USDC * 10^6 = 1000000000)
+       expect(rate.amountIn).toBe("1000000000");
       expect(rate.amountOut).toBeTypeOf("string");
       expect(rate.effectiveRate).toBeTypeOf("number");
       expect(rate.effectiveRate).toBeGreaterThan(0);
@@ -124,7 +125,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should provide liquidity at required thresholds", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -151,7 +152,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return list of supported assets", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -173,7 +174,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should handle multiple routes correctly", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const secondRoute = {
         source: {
@@ -202,7 +203,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should require routes and notionals", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       // Should throw validation error for empty routes
       await expect(
@@ -224,7 +225,7 @@ describe("Data Provider Plugin Integration Tests", () => {
 
   describe("ping procedure", () => {
     it("should return healthy status", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@misbah/lifi", TEST_CONFIG);
 
       const result = await client.ping();
 

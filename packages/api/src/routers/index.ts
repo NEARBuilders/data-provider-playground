@@ -1,16 +1,15 @@
 import { publicProcedure } from "../index";
 import { dataProviderRouter } from "../runtime";
-import type { RouterClient } from "@orpc/server";
+import type { Router, RouterClient } from "@orpc/server";
 
-export const appRouter = publicProcedure.router({
-	healthCheck: publicProcedure.handler(() => {
-		return "OK";
-	}),
-	dataProvider: {
-		getSnapshot: dataProviderRouter.getSnapshot,
-		ping: dataProviderRouter.ping,
-	},
+// ✅ Explicitly declare router type to avoid inference errors from Zod
+export const appRouter: Router<any, any> = publicProcedure.router({
+  healthCheck: publicProcedure.handler(() => {
+    return "OK";
+  }),
+  dataProvider: dataProviderRouter,
 });
 
+// ✅ Explicitly type exports to keep TS portable for d.ts builds
 export type AppRouter = typeof appRouter;
-export type AppRouterClient = RouterClient<typeof appRouter>;
+export type AppRouterClient = RouterClient<AppRouter>;

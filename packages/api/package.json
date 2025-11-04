@@ -12,23 +12,20 @@
   },
   "type": "module",
   "scripts": {
+    "dev": "bun src/index.ts",
     "build": "tsdown"
   },
   "devDependencies": {
-    "tsdown": "^0.15.5",
-    "@every-plugin/template": "workspace:*"
+    "tsdown": "^0.15.5"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@orpc/client": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
-    "@orpc/zod": "catalog:",
+    "@misbah/lifi": "workspace:*",
     "dotenv": "^17.2.2",
-    "every-plugin": "catalog:",
-    "next": "catalog:",
-    "zod": "catalog:"
+    "every-plugin": "^0.3.2",
+    "next": "^14.2.4",
+    "zod": "^4.1.11"
   }
 }

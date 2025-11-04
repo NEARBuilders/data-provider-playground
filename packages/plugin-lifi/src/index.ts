@@ -4,6 +4,7 @@ import { z } from "every-plugin/zod";
 
 import { contract } from "./contract";
 import { DataProviderService } from "./service";
+import { optional } from "zod";
 
 /**
  * Data Provider Plugin Template - Template for building single-provider bridge data adapters.
@@ -14,15 +15,15 @@ import { DataProviderService } from "./service";
  * 
  */
 export default createPlugin({
-  id: "@every-plugin/template",
+  id: "@misbah/lifi",
 
   variables: z.object({
-    baseUrl: z.string().url().default("https://api.example.com"),
+    baseUrl: z.string().url().default("https://li.quest/v1"),
     timeout: z.number().min(1000).max(60000).default(10000),
   }),
 
   secrets: z.object({
-    apiKey: z.string().min(1, "API key is required"),
+    DATA_PROVIDER_API_KEY: z.string().optional(),
   }),
 
   contract,
@@ -32,7 +33,7 @@ export default createPlugin({
       // Create service instance with config
       const service = new DataProviderService(
         config.variables.baseUrl,
-        config.secrets.apiKey,
+        config.secrets.DATA_PROVIDER_API_KEY ?? "",
         config.variables.timeout
       );
 

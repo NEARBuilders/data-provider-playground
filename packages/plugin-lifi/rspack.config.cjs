@@ -1,11 +1,8 @@
 const path = require("node:path");
 const { rspack } = require("@rspack/core");
-const { withZephyr } = require("zephyr-rspack-plugin");
 
 const pkg = require("./package.json");
-
 const { getNormalizedRemoteName } = require("every-plugin/normalize");
-
 const everyPluginPkg = require("every-plugin/package.json");
 
 function getPluginInfo() {
@@ -20,19 +17,7 @@ function getPluginInfo() {
 
 const pluginInfo = getPluginInfo();
 
-module.exports = withZephyr({
-  hooks: {
-      onDeployComplete: (info) => {
-        console.log('🚀 Deployment Complete!');
-        console.log(`   URL: ${info.url}`);
-        console.log(`   Module: ${info.snapshot.uid.app_name}`);
-        console.log(`   Build ID: ${info.snapshot.uid.build}`);
-        console.log(`   Dependencies: ${info.federatedDependencies.length}`);
-        console.log(`   Git: ${info.snapshot.git.branch}@${info.snapshot.git.commit}`);
-        console.log(`   CI: ${info.buildStats.context.isCI ? 'Yes' : 'No'}`);
-      },
-    },
-})({
+module.exports = {
   entry: "./src/index",
   mode: process.env.NODE_ENV === "development" ? "development" : "production",
   target: "async-node",
@@ -114,4 +99,4 @@ module.exports = withZephyr({
       },
     }),
   ],
-});
+};
