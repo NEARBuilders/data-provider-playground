@@ -5,12 +5,7 @@ import { z } from "every-plugin/zod";
 import { contract } from "./contract";
 import { DataProviderService } from "./service"; 
 
-/**
- * Across Protocol Data Provider Plugin
- *
- * Collects and normalizes market data from Across Protocol for comparison with NEAR Intents.
- * Provides volume, rates, liquidity depth, and available assets data.
- */
+
 export default createPlugin({
   id: "@near-intents/across-plugin",
 
