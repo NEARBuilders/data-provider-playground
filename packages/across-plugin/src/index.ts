@@ -3,7 +3,7 @@ import { Effect } from "every-plugin/effect";
 import { z } from "every-plugin/zod";
 
 import { contract } from "./contract";
-import { DataProviderService } from "./service"; // Changed from AcrossDataProviderService
+import { DataProviderService } from "./service"; 
 
 /**
  * Across Protocol Data Provider Plugin
@@ -21,7 +21,7 @@ export default createPlugin({
   }),
 
   secrets: z.object({
-    apiKey: z.string().optional().default(""), // Across API key is optional for public endpoints
+    apiKey: z.string().optional().default(""), 
   }),
 
   contract,
