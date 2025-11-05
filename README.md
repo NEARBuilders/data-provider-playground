@@ -169,8 +169,8 @@ All commands work from the `packages/plugin-lifi` directory after installation.
 
 **Notes**:
 - **Real data** from actual transfers (not simulated)
-- API returns max 1000 transfers per request (limitation)
-- 24h window: Usually complete; 7d/30d: May only include recent 1000 transfers (sample)
+- We explicitly request up to **1000 transfers per window** (`limit=1000`) — this is the API maximum
+- 24h window: Usually complete; 7d/30d: May only include the most recent 1000 transfers (sample)
 - On error: Returns 0 volume for that window (graceful degradation)
 
 ### 2. Rates (Fees)
@@ -219,7 +219,7 @@ All commands work from the `packages/plugin-lifi` directory after installation.
 1. Query: `GET /tokens`
 2. Parse: Handle both `{ "1": [...] }` and `{ tokens: { "1": [...] } }` formats
 3. Extract: `chainId` (string), `assetId` (address), `symbol`, `decimals` (defaults to 18)
-4. Return: First 100 tokens with `measuredAt` timestamp
+4. Return: All available tokens from all chains with `measuredAt` timestamp
 
 ## Resilience Features
 
@@ -250,60 +250,4 @@ All commands work from the `packages/plugin-lifi` directory after installation.
 
 **Example Normalization**:
 - Input: 1000 USDC (6 decimals)
-- `amountIn`: `"1000000000"` (smallest units)
-- `amountOut`: `"999500000"` (smallest units)
-- `effectiveRate`: `0.9995` (normalized)
-
-## Testing
-
-### Unit Tests (`src/__tests__/unit/service.test.ts`)
-Tests service methods: snapshot structure, volumes, rates, liquidity, assets, multiple routes.
-
-### Integration Tests (`src/__tests__/integration/plugin.test.ts`)
-Tests full plugin flow with real API calls: initialization, contract compliance, all metrics.
-
-**Run**: `bun test` (all), `bun test:unit`, `bun test:integration`
-
-All tests pass and validate:
-- ✅ Contract compliance and type safety
-- ✅ Correctness and repeatability of metrics
-- ✅ Robustness under rate limits and failures
-
-## Evaluation Criteria
-
-✅ **Contract Compliance**: All field names match exactly, uses Zod for validation  
-✅ **Correctness**: Real API data, deterministic calculations, well-documented  
-✅ **Robustness**: Rate limiting, retry logic, 429 handling, graceful failures  
-✅ **Clarity**: Comprehensive README, clear tests, detailed data derivation
-
-## Submission
-
-- **Repository**: Forked from template repository
-- **Plugin ID**: `@misbah/lifi`
-- **Provider**: Li.Fi (single provider only)
-
-**README Requirements** ✅:
-- ✅ Provider chosen: Li.Fi
-- ✅ Endpoints used: `/quote`, `/tokens`, `/analytics/transfers`
-- ✅ API access constraints: Rate limits, API key documentation
-- ✅ Setup: Installation and prerequisites
-- ✅ ENV variables: Documented with defaults
-- ✅ How to run locally: Development, tests, build
-- ✅ How data is derived: Detailed explanation for all 4 metrics
-
-## Project Structure
-
-```
-packages/plugin-lifi/
-├── src/
-│   ├── contract.ts      # Contract specification (Zod schemas)
-│   ├── service.ts       # DataProviderService implementation
-│   ├── index.ts         # Plugin definition
-│   └── __tests__/       # Unit and integration tests
-├── README.md            # This file
-└── package.json
-```
-
-## License
-
-Part of the NEAR Intents data collection system.
+- `

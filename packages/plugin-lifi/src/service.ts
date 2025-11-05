@@ -110,7 +110,7 @@ export class DataProviderService {
       console.log("[LiFiService] Building snapshot...");
 
       const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-        this.getVolumes(params.includeWindows || ["24h"]),
+        this.getVolumes(params.includeWindows || ["24h", "7d", "30d"]),
         this.getRates(params.routes, params.notionals),
         this.getLiquidityDepth(params.routes),
         this.getListedAssets()
@@ -150,7 +150,8 @@ export class DataProviderService {
         }
 
         const baseUrl = this.baseUrl.replace(/\/$/, "");
-        const url = `${baseUrl}/analytics/transfers?fromTimestamp=${fromTimestamp}&toTimestamp=${now}`;
+        // Request maximum 1000 transfers per window (API limit)
+        const url = `${baseUrl}/analytics/transfers?fromTimestamp=${fromTimestamp}&toTimestamp=${now}&limit=1000`;
 
         // Apply rate limiting and retry logic
         await this.rateLimiter.acquire();
@@ -184,16 +185,25 @@ export class DataProviderService {
         // Aggregate volume from transfers
         // Sum up sending.amountUSD from all transfers (USD value of tokens sent)
         let totalVolume = 0;
+        let transferCount = 0;
+        let validTransferCount = 0;
+        
         if (data.transfers && Array.isArray(data.transfers)) {
+          transferCount = data.transfers.length;
+          
           for (const transfer of data.transfers) {
             if (transfer.sending?.amountUSD) {
               const amount = Number(transfer.sending.amountUSD);
               if (!isNaN(amount) && amount > 0) {
                 totalVolume += amount;
+                validTransferCount++;
               }
             }
           }
         }
+
+        // Log volume calculation details
+        console.log(`📊 [getVolumes] ${window} window: ${validTransferCount}/${transferCount} valid transfers, total volume: $${totalVolume.toFixed(2)}${transferCount >= 1000 ? ' (max 1000 transfers reached)' : ''}`);
 
         results.push({
           window,
@@ -255,7 +265,8 @@ private async getRates(
                    const res = await retryWithBackoff(async () => {
             const fetchRes = await fetch(url, {
               headers: {
-                accept: "application/json"
+                accept: "application/json",
+                ...(this.apiKey ? { "x-lifi-api-key": this.apiKey } : {}),
               },
               signal: AbortSignal.timeout(this.timeout)
             });
@@ -407,10 +418,9 @@ private async getListedAssets(): Promise<ListedAssetsType> {
         assetId: t.address,
         symbol: t.symbol,
         decimals: Number(t.decimals) || 18,
-      }))
-       .slice(0, 100); //
+      }));
 
-    console.log(`✅ Loaded ${assets.length} tokens from Li.Fi`);
+    console.log(`✅ Loaded ${assets.length} total tokens from Li.Fi`);
     return { assets, measuredAt: new Date().toISOString() };
   } catch (err) {
     console.error("⚠️ getListedAssets failed:", (err as Error).message);
@@ -438,15 +448,22 @@ private async getListedAssets(): Promise<ListedAssetsType> {
        const quotes = await Promise.all(
          amounts.map(async (amt) => {
            const fromAddress = "0x1111111254EEB25477B68fb85Ed929f73A960582";
+           const toAddress = fromAddress;
            const slippage = 0.5;
-           const url = `${baseUrl}/quote?fromChain=${route.source.chainId}&toChain=${route.destination.chainId}&fromToken=${route.source.assetId}&toToken=${route.destination.assetId}&fromAmount=${amt}&fromAddress=${fromAddress}&slippage=${slippage}`;
+           // Normalize addresses to lowercase
+           const fromToken = route.source.assetId.toLowerCase();
+           const toToken = route.destination.assetId.toLowerCase();
+           const url = `${baseUrl}/quote?fromChain=${route.source.chainId}&toChain=${route.destination.chainId}&fromToken=${fromToken}&toToken=${toToken}&fromAmount=${amt}&fromAddress=${fromAddress}&toAddress=${toAddress}&slippage=${slippage}`;
            try {
              // Apply rate limiting and retry logic
              await this.rateLimiter.acquire();
              
              const res = await retryWithBackoff(async () => {
                const fetchRes = await fetch(url, {
-                 headers: { accept: "application/json" },
+                 headers: {
+                   accept: "application/json",
+                   ...(this.apiKey ? { "x-lifi-api-key": this.apiKey } : {}),
+                 },
                  signal: AbortSignal.timeout(this.timeout)
                });
                

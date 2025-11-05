@@ -31,7 +31,7 @@ describe("DataProviderService", () => {
         service.getSnapshot({
           routes: [mockRoute],
           notionals: ["1000", "10000"],
-          includeWindows: ["24h", "7d"]
+          includeWindows: ["24h", "7d", "30d"]
         })
       );
 
@@ -53,13 +53,14 @@ describe("DataProviderService", () => {
         service.getSnapshot({
           routes: [mockRoute],
           notionals: ["1000"],
-          includeWindows: ["24h", "7d"]
+          includeWindows: ["24h", "7d", "30d"]
         })
       );
 
-      expect(result.volumes).toHaveLength(2);
+      expect(result.volumes).toHaveLength(3);
       expect(result.volumes.map(v => v.window)).toContain("24h");
       expect(result.volumes.map(v => v.window)).toContain("7d");
+      expect(result.volumes.map(v => v.window)).toContain("30d");
       expect(result.volumes[0].volumeUsd).toBeTypeOf("number");
       expect(result.volumes[0].measuredAt).toBeTypeOf("string");
     }, 60000);

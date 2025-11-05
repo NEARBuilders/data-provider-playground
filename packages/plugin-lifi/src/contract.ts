@@ -67,7 +67,7 @@ export const contract = oc.router({
       routes: z.array(z.object({ source: Asset, destination: Asset })).min(1),
       notionals: z.array(z.string()).min(1), // amounts in source units to quote
       includeWindows: z.array(z.enum(["24h", "7d", "30d"]))
-        .default(["24h"]).optional(),
+        .default(["24h", "7d", "30d"]).optional(),
     }))
     .output(ProviderSnapshot)
     .errors(CommonPluginErrors),
