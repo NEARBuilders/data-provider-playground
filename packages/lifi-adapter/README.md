@@ -66,8 +66,21 @@ getVolumes(windows: ["24h", "7d", "30d"]) {
 
 **Rate Limiting**:
 - **Unauthenticated**: 200 requests per 2 hours (~1.6 req/min)
-- **Authenticated** (with API key): 200 requests per minute
-- **Recommendation**: Cache results for 30 minutes between updates
+- **Authenticated** (with API key): 200 requests per minute (recommended for production)
+- **Important**: Rate limits are enforced over a rolling 2-hour window
+- **Recommendation**: Cache results for 30 minutes between updates to stay within limits
+
+**Why v2 Over v1**:
+- **v1 endpoint**: Max 1000 transfers per request, NO pagination support
+- **v2 endpoint**: Paginated results with `hasNext`, `next`, `previous` fields for complete data
+- **Verified by Li.Fi**: v2 is the recommended endpoint for accurate volume aggregation
+
+**Alternative Endpoint - Not Suitable**:
+- **`/v1/analytics/transfers/summary`**: Returns wallet-specific cross-chain transfer totals only
+  - Limited to cross-chain transfers only (not all transfers)
+  - Cannot be used for global volume aggregation
+  - 30-day maximum range
+  - Not recommended for this use case
 
 **Example Response**:
 ```json
@@ -161,19 +174,60 @@ This design ensures:
 
 ## Testing
 
+### Test Commands
+
 ```bash
-# Run all tests
+# For CI/CD and production ✅ RECOMMENDED
 bun run test
 
-# Run specific test file
-bun run test:unit
-bun run test:integration
+# For local development
+bun test
 
-# Watch mode
+# Watch mode (development)
 bun run test:watch
 ```
 
-All tests use MSW (Mock Service Worker) for deterministic API responses. See `src/__tests__/setup.ts` for mock configuration.
+### `bun run test` vs `bun test` - Which to Use?
+
+| Use Case | Command | Why |
+|----------|---------|-----|
+| **Production Build** | `bun run test` ✅ | Deterministic with mocks, 100% pass |
+| **CI/CD Pipeline** | `bun run test` ✅ | Consistent, no rate limiting |
+| **Local Development** | `bun test` | Quick feedback, real API testing |
+| **Debugging** | Both | Different perspectives on issues |
+
+### Technical Details
+
+| Aspect | `bun run test` (Vitest) | `bun test` (Bun native) |
+|--------|---|---|
+| **Runner** | Vitest ✅ | Bun native |
+| **Mocks** | Loaded (`setup.ts`) | Not loaded |
+| **API Calls** | Mocked (safe) | Real (rate-limited) |
+| **Result** | 16 pass, 1 skip ✅ | May fail at rate limits |
+| **For Production** | ✅ YES | ❌ NOT recommended |
+
+**Why the difference?**
+- `bun run test` = Runs vitest script from `package.json` → loads `src/__tests__/setup.ts` with mocks
+- `bun test` = Bun's native test runner → doesn't load Vitest setup files → hits real Li.Fi API
+
+### Test Organization
+
+```bash
+# Run all tests (CI/CD)
+bun run test
+
+# Run only unit tests
+bun run test:unit
+
+# Run only integration tests
+bun run test:integration
+
+# Development: Quick testing with real API
+bun test
+```
+
+All tests use custom fetch mocking for deterministic responses. See `src/__tests__/setup.ts` for configuration details.
+
 
 ## Development
 

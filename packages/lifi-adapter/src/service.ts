@@ -218,7 +218,10 @@ export class DataProviderService {
 
         while (hasMore) {
           try {
-            const url = new URL(`${this.baseUrl}/analytics/transfers`);
+            // Use v2 endpoint for analytics/transfers as it has proper pagination
+            // v1 endpoint only returns max 1000 transfers without pagination info
+            const baseAnalyticsUrl = this.baseUrl.replace('/v1', '/v2');
+            const url = new URL(`${baseAnalyticsUrl}/analytics/transfers`);
             url.searchParams.set("status", "DONE");
             url.searchParams.set("fromTimestamp", String(fromTimestamp));
             url.searchParams.set("toTimestamp", String(now));

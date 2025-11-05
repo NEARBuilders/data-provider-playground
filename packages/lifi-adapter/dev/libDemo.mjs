@@ -99,20 +99,41 @@ async function getVolumes(base, timeout, mock) {
                       30 * 24 * 60 * 60;
       
       const fromTimestamp = now - duration;
-      const url = new URL(`${base}/analytics/transfers`);
-      url.searchParams.set('status', 'DONE');
-      url.searchParams.set('fromTimestamp', String(fromTimestamp));
-      url.searchParams.set('toTimestamp', String(now));
-      url.searchParams.set('limit', '1000');
-
+      
       try {
-        const response = await fetchJson(url.toString(), timeout);
         let totalVolume = 0;
+        let hasMore = true;
+        let cursor = undefined;
+        let pageCount = 0;
+        const MAX_PAGES = 5; // Limit to 5 pages for demo to avoid rate limiting
         
-        // Handle both v1 (transfers) and v2 (data) response formats
-        const transfersList = response?.data || response?.transfers || [];
-        if (Array.isArray(transfersList)) {
-          totalVolume = transfersList.reduce((sum, t) => sum + parseFloat(t.receiving?.amountUSD || '0'), 0);
+        // Paginate through all transfers
+        while (hasMore && pageCount < MAX_PAGES) {
+          // Use v2 endpoint for analytics/transfers as it has proper pagination
+          // v1 endpoint only returns max 1000 transfers without pagination info
+          const analyticsBase = base.replace('/v1', '/v2');
+          const url = new URL(`${analyticsBase}/analytics/transfers`);
+          url.searchParams.set('status', 'DONE');
+          url.searchParams.set('fromTimestamp', String(fromTimestamp));
+          url.searchParams.set('toTimestamp', String(now));
+          url.searchParams.set('limit', '1000');
+          
+          if (cursor) {
+            url.searchParams.set('next', cursor);
+          }
+          
+          const response = await fetchJson(url.toString(), timeout);
+          
+          // Handle both v1 (transfers) and v2 (data) response formats
+          const transfersList = response?.data || response?.transfers || [];
+          if (Array.isArray(transfersList)) {
+            totalVolume += transfersList.reduce((sum, t) => sum + parseFloat(t.receiving?.amountUSD || '0'), 0);
+          }
+          
+          // Check pagination
+          hasMore = response?.hasNext === true;
+          cursor = response?.next;
+          pageCount++;
         }
         
         volumes.push({
