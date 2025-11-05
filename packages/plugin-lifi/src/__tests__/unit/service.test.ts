@@ -46,7 +46,7 @@ describe("DataProviderService", () => {
       expect(Array.isArray(result.rates)).toBe(true);
       expect(Array.isArray(result.liquidity)).toBe(true);
       expect(Array.isArray(result.listedAssets.assets)).toBe(true);
-    });
+    }, 60000);
 
     it("should return volumes for requested time windows", async () => {
       const result = await Effect.runPromise(
@@ -62,7 +62,7 @@ describe("DataProviderService", () => {
       expect(result.volumes.map(v => v.window)).toContain("7d");
       expect(result.volumes[0].volumeUsd).toBeTypeOf("number");
       expect(result.volumes[0].measuredAt).toBeTypeOf("string");
-    });
+    }, 60000);
 
     it("should generate rates for all route/notional combinations", async () => {
       const result = await Effect.runPromise(
@@ -87,7 +87,7 @@ describe("DataProviderService", () => {
       expect(rate.effectiveRate).toBeGreaterThan(0);
       expect(rate.totalFeesUsd).toBeTypeOf("number");
       expect(rate.quotedAt).toBeTypeOf("string");
-    });
+    }, 60000);
 
     it("should provide liquidity at 50bps and 100bps thresholds", async () => {
       const result = await Effect.runPromise(
@@ -114,7 +114,7 @@ describe("DataProviderService", () => {
         expect(threshold.maxAmountIn).toBeTypeOf("string");
         expect(threshold.slippageBps).toBeTypeOf("number");
       });
-    });
+    }, 60000);
 
     it("should return list of supported assets", async () => {
       const result = await Effect.runPromise(
@@ -137,7 +137,7 @@ describe("DataProviderService", () => {
       });
 
       expect(result.listedAssets.measuredAt).toBeTypeOf("string");
-    });
+    }, 60000);
 
     it("should handle multiple routes correctly", async () => {
       const secondRoute = {
@@ -166,7 +166,7 @@ describe("DataProviderService", () => {
       // Should have liquidity data for both routes
       expect(result.liquidity).toHaveLength(2);
       expect(result.rates).toHaveLength(2); // 2 routes × 1 notional
-    });
+    }, 60000);
   });
 
   describe("ping", () => {

@@ -132,6 +132,29 @@ All tests should pass before submission.
 bun build
 ```
 
+### Quick Workflow
+
+Quick commands to install, type-check, build, and test:
+
+```bash
+# Install dependencies (from project root)
+bun install
+
+# Navigate to plugin directory
+cd packages/plugin-lifi
+
+# Type check
+bun run type-check
+
+# Build
+bun run build
+
+# Run tests
+bun test
+```
+
+All commands work from the `packages/plugin-lifi` directory after installation.
+
 ## How Data is Derived
 
 ### 1. Volume
