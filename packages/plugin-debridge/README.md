@@ -169,6 +169,4 @@ npm run dev
 
 Starts Rspack dev server on http://localhost:3014
 
-## License
 
-Part of the NEAR Intents data collection system.
