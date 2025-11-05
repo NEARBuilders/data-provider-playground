@@ -33,6 +33,28 @@ interface LiFiQuote {
   };
 }
 
+interface LiFiTransfer {
+  receiving: {
+    amount: string;
+    amountUSD?: string;
+    token: {
+      address: string;
+      chainId: number;
+      symbol: string;
+    };
+  };
+  tool: string;
+  status: string;
+  timestamp: number;
+}
+
+interface LiFiTransfersResponse {
+  data?: LiFiTransfer[];
+  transfers?: LiFiTransfer[];
+  hasNext?: boolean;
+  next?: string;
+}
+
 // Infer the types from the schemas
 type AssetType = z.infer<typeof Asset>;
 type RateType = z.infer<typeof Rate>;
@@ -150,23 +172,103 @@ export class DataProviderService {
   /**
    * Get aggregated volume metrics for specified time windows.
    * 
-   * TODO: Integrate The Graph for volume data
-   * Li.Fi does not expose aggregated volume metrics. We propose using The Graph
-   * to query on-chain DEX volumes (Uniswap, Aave, etc).
+   * Uses Li.Fi's GET /v2/analytics/transfers endpoint to aggregate cross-chain transfer volumes.
+   * This endpoint returns actual transaction data from Li.Fi's routing records.
    * 
-   * Implementation plan:
-   * - Query The Graph endpoint: https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3
-   * - No API key required for public endpoints
-   * - Aggregate volume for 24h/7d/30d windows
-   * - Fallback: return empty array on failure
+   * Rate limits (unauthenticated): 200 requests per 2 hours
+   * Rate limits (authenticated): 200 requests per minute
    * 
-   * See README "Volume Metrics (Strategy & Implementation)" section for details.
+   * Implementation:
+   * - Queries transfers for each time window (24h, 7d, 30d)
+   * - Aggregates amountUSD from all DONE transfers
+   * - Handles pagination for large datasets
+   * - Returns empty array on error (graceful degradation)
+   * 
+   * See README "Volume Metrics Implementation" section for details.
    */
-  private async getVolumes(_windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
-    // TODO: Implement The Graph integration for volume data
-    // For now, return empty array since Li.Fi doesn't provide aggregated metrics
-    // This is a valid response - volumes are optional in the contract
-    return [];
+  private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
+    if (!windows?.length) {
+      return [];
+    }
+
+    const volumes: VolumeWindowType[] = [];
+    const now = Math.floor(Date.now() / 1000); // Unix timestamp
+
+    // Time windows in seconds
+    const windowDurations: Record<string, number> = {
+      "24h": 24 * 60 * 60,
+      "7d": 7 * 24 * 60 * 60,
+      "30d": 30 * 24 * 60 * 60,
+    };
+
+    for (const window of windows) {
+      try {
+        const duration = windowDurations[window];
+        if (!duration) {
+          console.warn(`Unknown window: ${window}`);
+          continue;
+        }
+
+        const fromTimestamp = now - duration;
+        
+        // Aggregate transfers for this window
+        let totalVolume = new Decimal(0);
+        let cursor: string | undefined = undefined;
+        let hasMore = true;
+
+        while (hasMore) {
+          try {
+            const url = new URL(`${this.baseUrl}/analytics/transfers`);
+            url.searchParams.set("status", "DONE");
+            url.searchParams.set("fromTimestamp", String(fromTimestamp));
+            url.searchParams.set("toTimestamp", String(now));
+            url.searchParams.set("limit", "1000");
+            
+            if (cursor) {
+              url.searchParams.set("next", cursor);
+            }
+
+            const response = await this.fetchWithRetry<LiFiTransfersResponse>(url.toString());
+
+            // Handle both v1 (transfers) and v2 (data) response formats
+            const transfersList = response?.data || response?.transfers || [];
+            
+            if (Array.isArray(transfersList)) {
+              for (const transfer of transfersList) {
+                // Sum USD amounts from receiving side (destination amount in USD)
+                const amount = new Decimal(transfer.receiving?.amountUSD || "0");
+                totalVolume = totalVolume.plus(amount);
+              }
+            }
+
+            // Check if there's another page
+            hasMore = response?.hasNext === true;
+            cursor = response?.next;
+          } catch (pageError) {
+            console.warn(`Error fetching page for window ${window}:`, 
+              pageError instanceof Error ? pageError.message : "Unknown error");
+            break;
+          }
+        }
+
+        volumes.push({
+          window,
+          volumeUsd: totalVolume.toNumber(),
+          measuredAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error(`Failed to fetch volume for window ${window}:`, 
+          error instanceof Error ? error.message : "Unknown error");
+        // Return empty for this window but continue with others
+        volumes.push({
+          window,
+          volumeUsd: 0,
+          measuredAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    return volumes;
   }
 
   /**

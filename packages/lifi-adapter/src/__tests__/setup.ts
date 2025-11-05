@@ -82,6 +82,48 @@ beforeAll(() => {
 				);
 			}
 
+			// Mock analytics/transfers endpoint (v1 format - returns "transfers" not "data")
+			if (url.startsWith('https://li.quest/v1/analytics/transfers') || url.startsWith('https://li.quest/v2/analytics/transfers')) {
+				// Generate realistic transfer data based on time window
+				const params = new URL(url);
+				const fromTimestamp = parseInt(params.searchParams.get('fromTimestamp') || '0');
+				const toTimestamp = parseInt(params.searchParams.get('toTimestamp') || '0');
+				const timeWindow = toTimestamp - fromTimestamp;
+				
+				// Simulate transfers with volumes proportional to time window
+				// For testing: 100k per transfer, ~10 transfers per day
+				const transfersPerDay = 10;
+				const daysInWindow = timeWindow / (24 * 60 * 60);
+				const numTransfers = Math.max(1, Math.ceil(daysInWindow * transfersPerDay));
+				
+				const transfers = Array.from({ length: Math.min(numTransfers, 100) }, (_, i) => ({
+					receiving: {
+						amount: '1000000',
+						amountUSD: '100000', // $100k per transfer
+						token: {
+							address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417',
+							chainId: 137,
+							symbol: 'USDC'
+						}
+					},
+					tool: 'anyswap',
+					status: 'DONE',
+					timestamp: toTimestamp - (i * 86400) // Spread across the window
+				}));
+
+				// Response format matches v1 endpoint (transfers field)
+				return new Response(
+					JSON.stringify({
+						transfers,
+						data: transfers, // Include both for compatibility
+						hasNext: false,
+						next: null,
+						previous: null
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+
 			// Fallback: use original fetch only for unhandled URLs
 			if (originalFetch) {
 				console.warn(`Falling back to real fetch for: ${url}`);

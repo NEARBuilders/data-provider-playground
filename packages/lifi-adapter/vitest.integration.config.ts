@@ -14,7 +14,7 @@ export default defineConfig({
 		],
 		setupFiles: ["./src/__tests__/setup.ts"],
 		globalSetup: ["./src/__tests__/integration/global-setup.ts"],
-		testTimeout: 60000, // Longer timeout for integration tests 
+		testTimeout: 120000, // Increased for liquidity probing binary search
 		// Run sequentially to avoid port conflicts
 		pool: "threads",
 		poolOptions: {

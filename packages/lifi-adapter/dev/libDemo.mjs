@@ -63,6 +63,79 @@ async function getQuote(base, timeout, fromChain, toChain, fromToken, toToken, f
   return await fetchJson(url.toString(), timeout);
 }
 
+async function getVolumes(base, timeout, mock) {
+  if (mock) {
+    // Mock volume data: 10 transfers per day at $100k each
+    const now = Math.floor(Date.now() / 1000);
+    const volumes = [];
+    const windows = [
+      { name: '24h', duration: 24 * 60 * 60, transfersPerDay: 10 },
+      { name: '7d', duration: 7 * 24 * 60 * 60, transfersPerDay: 10 },
+      { name: '30d', duration: 30 * 24 * 60 * 60, transfersPerDay: 10 }
+    ];
+
+    for (const window of windows) {
+      const daysInWindow = window.duration / (24 * 60 * 60);
+      const numTransfers = daysInWindow * window.transfersPerDay;
+      const volumeUsd = numTransfers * 100000; // $100k per transfer
+      
+      volumes.push({
+        window: window.name,
+        volumeUsd: volumeUsd,
+        measuredAt: new Date().toISOString()
+      });
+    }
+    return volumes;
+  }
+
+  // Live mode: query real analytics endpoint
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const volumes = [];
+    
+    for (const windowName of ['24h', '7d', '30d']) {
+      const duration = windowName === '24h' ? 24 * 60 * 60 : 
+                      windowName === '7d' ? 7 * 24 * 60 * 60 : 
+                      30 * 24 * 60 * 60;
+      
+      const fromTimestamp = now - duration;
+      const url = new URL(`${base}/analytics/transfers`);
+      url.searchParams.set('status', 'DONE');
+      url.searchParams.set('fromTimestamp', String(fromTimestamp));
+      url.searchParams.set('toTimestamp', String(now));
+      url.searchParams.set('limit', '1000');
+
+      try {
+        const response = await fetchJson(url.toString(), timeout);
+        let totalVolume = 0;
+        
+        // Handle both v1 (transfers) and v2 (data) response formats
+        const transfersList = response?.data || response?.transfers || [];
+        if (Array.isArray(transfersList)) {
+          totalVolume = transfersList.reduce((sum, t) => sum + parseFloat(t.receiving?.amountUSD || '0'), 0);
+        }
+        
+        volumes.push({
+          window: windowName,
+          volumeUsd: totalVolume,
+          measuredAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn(`Failed to fetch volume for ${windowName}:`, err.message);
+        volumes.push({
+          window: windowName,
+          volumeUsd: 0,
+          measuredAt: new Date().toISOString()
+        });
+      }
+    }
+    return volumes;
+  } catch (err) {
+    console.warn('Failed to fetch volumes:', err.message);
+    return [];
+  }
+}
+
 function calculateEffectiveRate(fromAmount, toAmount, fromDecimals, toDecimals) {
   try {
     const fromDecimal = new Decimal(fromAmount).div(new Decimal(10).pow(fromDecimals));
@@ -115,10 +188,19 @@ export async function buildSnapshot(opts = {}) {
     quote = { estimate: { fromAmount: notional, toAmount: notional, feeCosts: [{ amount: '0', amountUSD: '0' }] } };
   }
 
+  // Fetch volumes
+  let volumes;
+  try {
+    volumes = await getVolumes(base, timeout, mock);
+  } catch (err) {
+    console.warn('Failed to fetch volumes:', err.message);
+    volumes = [];
+  }
+
   const effectiveRate = calculateEffectiveRate(quote.estimate.fromAmount, quote.estimate.toAmount, srcToken.decimals, dstToken.decimals);
 
   const snapshot = {
-    volumes: [],
+    volumes,
     rates: [
       {
         source: { chainId: String(srcChain), assetId: srcToken.address, symbol: srcToken.symbol, decimals: srcToken.decimals },

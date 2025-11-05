@@ -41,64 +41,82 @@ See [Li.Fi API Documentation](https://docs.li.fi/api-reference) for complete API
 
 ### Volume Metrics (Strategy & Implementation)
 
-**Status**: Li.Fi does not expose aggregated volume metrics via its public API.
+**Status**: ✅ **IMPLEMENTED** using Li.Fi's native `/analytics/transfers` endpoint.
 
-**Why This is a Design Choice**:
-Li.Fi is a quote aggregator and router - it doesn't independently collect or expose trading volume data. Instead, Li.Fi routes trades through various DEX aggregators (1inch, 0x, etc.), bridges (Stargate, Connext, etc.), and other protocols. The volume data belongs to these underlying protocols, not to Li.Fi itself.
+**How It Works**:
 
-**Our Solution: The Graph Integration** ⭐
+The `getVolumes()` method uses Li.Fi's **`GET /v2/analytics/transfers`** endpoint to aggregate cross-chain transfer volumes directly from Li.Fi's routing records.
 
-We propose integrating **The Graph** for decentralized volume data:
-
-**Why The Graph?**
-- ✅ **No API key required** - Public GraphQL endpoints
-- ✅ **Real-time data** - On-chain event indexing
-- ✅ **Historical data** - Complete blockchain history
-- ✅ **Easy integration** - Standard GraphQL queries
-- ✅ **Reliable** - Decentralized infrastructure
-- ✅ **Multi-chain** - Subgraphs for multiple DEXs
-
-**Current Implementation**:
-The `getVolumes()` method returns an empty array `[]` with a TODO comment to implement The Graph integration:
-- Stub method ready for implementation
-- Query templates documented
-- Endpoints configured (no auth needed)
-- Fallback behavior: returns empty if query fails
-
-**How It Works** (When Implemented):
 ```typescript
-// Query The Graph for DEX volume data
-1. Call The Graph API endpoint (no auth)
-2. Query Uniswap/major DEX subgraphs
-3. Aggregate volume for requested time window (24h/7d/30d)
-4. Return volumeUSD for each period
-
-Example Endpoint (No API Key):
-https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3
+getVolumes(windows: ["24h", "7d", "30d"]) {
+  1. For each time window, query /v2/analytics/transfers
+  2. Filter by: status=DONE, fromTimestamp, toTimestamp
+  3. Paginate through all transfers (cursor-based pagination)
+  4. Sum all receiving.amountUSD values
+  5. Return { window, volumeUsd, measuredAt }
+}
 ```
 
-**Available The Graph Endpoints** (No API Key):
-- Uniswap V3: `https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3`
-- Uniswap V2: `https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v2`
-- Aave: `https://api.thegraph.com/subgraphs/name/aave/protocol-v3`
-- Many more available: https://thegraph.com/hosted-service
+**Why This Approach?**
 
-**Alternative Workarounds** (If Different Source Needed):
+✅ **Direct from Source**: Data from Li.Fi's own transaction records - most accurate
+✅ **No External Dependencies**: No need for external indexing services
+✅ **Self-Contained**: All required data comes from single provider
+✅ **Production-Ready**: Rate limits manageable with caching
 
-1. **Dune Analytics**: Query aggregated cross-chain bridge volumes
-   - Website: https://dune.com/
-   - Method: SQL queries or REST API
-   - Data: Historical volume, bridge-specific stats
+**Rate Limiting**:
+- **Unauthenticated**: 200 requests per 2 hours (~1.6 req/min)
+- **Authenticated** (with API key): 200 requests per minute
+- **Recommendation**: Cache results for 30 minutes between updates
 
-2. **Protocol-Specific APIs**: Contact underlying protocols directly
-   - 1inch DEX API: https://docs.1inch.io/
-   - 0x Protocol API: https://0x.org/docs/
-   - Stargate Bridge: https://stargate.finance/
-   - Connext Bridge: https://connext.technology/
+**Example Response**:
+```json
+{
+  "volumes": [
+    {
+      "window": "24h",
+      "volumeUsd": 1250000.50,
+      "measuredAt": "2025-11-04T23:48:31.832Z"
+    },
+    {
+      "window": "7d",
+      "volumeUsd": 8750000.25,
+      "measuredAt": "2025-11-04T23:48:31.832Z"
+    },
+    {
+      "window": "30d",
+      "volumeUsd": 35000000.00,
+      "measuredAt": "2025-11-04T23:48:31.832Z"
+    }
+  ]
+}
+```
 
-3. **Other On-Chain Indexing**: Alternative indexing services
-   - Chainbase: https://chainbase.com/ (Free tier available)
-   - Covalent: https://www.covalenthq.com/ (Free tier available)
+**Li.Fi Analytics API Reference**:
+
+- **GET `/v1/analytics/transfers`** - Basic transfers endpoint
+  - Returns: Up to 1000 transfers per request
+  - Parameters: `wallet`, `fromChain`, `toChain`, `fromToken`, `toToken`, `status`, `fromTimestamp`, `toTimestamp`, `integrator`
+
+- **GET `/v2/analytics/transfers`** - Paginated transfers endpoint (RECOMMENDED)
+  - Returns: Paginated results with cursor-based pagination
+  - Parameters: Same as v1 + `limit`, `next`, `previous`
+  - Response: `{ data, hasNext, next, previous }`
+
+See [Li.Fi Analytics Documentation](https://docs.li.fi/api-reference/get-a-paginated-list-of-filtered-transfers) for complete details.
+
+**Caching Strategy** (Recommended for Production):
+
+```typescript
+// Cache volume data for 30 minutes
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// This ensures:
+// - 2 requests per hour per window = 6 total per hour
+// - Well within 200 req/2hr limit
+// - Reduced API load
+// - Faster response times
+```
 
 4. **Real-Time Volume From Quote Patterns**:
    - Monitor successful quotes to infer liquidity availability
@@ -193,7 +211,7 @@ src/
 1. **Single Parameter Constructor**: Service only requires `baseUrl` to keep configuration minimal
 2. **Explicit Errors Over Fallbacks**: All failures throw errors instead of returning dummy data
 3. **Binary Search for Liquidity**: Determines max feasible amounts by probing quote endpoint
-4. **Empty Volume Array**: Returns `[]` for volume metrics since Li.Fi doesn't provide aggregated data
+4. **Native Volume Data**: Uses Li.Fi's `/analytics/transfers` endpoint for volume aggregation (no external services required)
 
 ## Performance Considerations
 

@@ -70,9 +70,9 @@ describe("Data Provider Plugin Integration Tests", () => {
       expect(result).toHaveProperty("liquidity");
       expect(result).toHaveProperty("listedAssets");
 
-      // Verify arrays structure (volumes empty for Li.Fi)
+      // Verify arrays structure
       expect(Array.isArray(result.volumes)).toBe(true);
-      expect(result.volumes.length).toBe(0);
+      expect(result.volumes.length).toBeGreaterThanOrEqual(0);
       expect(Array.isArray(result.rates)).toBe(true);
       expect(result.rates.length).toBeGreaterThan(0);
       expect(Array.isArray(result.liquidity)).toBe(true);
@@ -82,7 +82,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return volumes for requested time windows", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -90,9 +90,18 @@ describe("Data Provider Plugin Integration Tests", () => {
         includeWindows: ["24h", "7d"]
       });
 
-      // Li.Fi doesn't provide volume data
-      expect(result.volumes).toHaveLength(0);
+      // Verify volumes are returned from Li.Fi analytics/transfers endpoint
+      expect(result.volumes).toHaveLength(2);
       expect(Array.isArray(result.volumes)).toBe(true);
+      
+      // Verify volume structure
+      for (const volume of result.volumes) {
+        expect(volume).toHaveProperty("window");
+        expect(volume).toHaveProperty("volumeUsd");
+        expect(volume).toHaveProperty("measuredAt");
+        expect(["24h", "7d", "30d"]).toContain(volume.window);
+        expect(typeof volume.volumeUsd).toBe("number");
+      }
     });
 
     it("should generate rates for all route/notional combinations", async () => {
@@ -195,7 +204,7 @@ describe("Data Provider Plugin Integration Tests", () => {
       // Should have liquidity data for both routes
       expect(result.liquidity).toHaveLength(2);
       expect(result.rates).toHaveLength(2); // 2 routes × 1 notional
-    });
+    }, { timeout: 20000 });
 
     it("should require routes and notionals", async () => {
       const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);

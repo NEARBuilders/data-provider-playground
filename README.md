@@ -4,34 +4,18 @@ Production-ready Li.Fi bridge data adapter for NEAR Intents data collection boun
 
 ## Quick Start
 
-Requirements: Node 20+. You can use **npm** or **Bun** (faster).
+Requirements: Node 20+ or **Bun** (recommended, faster).
 
-### npm workflow
-
-```bash
-# Install dependencies
-npm install
-
-# Run tests (delegates to package script)
-cd packages/lifi-adapter && npm test
-
-# Build adapter
-cd packages/lifi-adapter && npm run build
-
-# Type check
-cd packages/lifi-adapter && npm run type-check
-
-# Development server (Rspack, http://localhost:3014)
-cd packages/lifi-adapter && npm run dev
-```
-
-### Bun workflow (faster alternative)
+### Bun workflow (recommended)
 
 ```bash
 # Install dependencies
 bun install
 
-# Run tests (Bun test runner)
+# Run tests (Bun test runner - all tests)
+bun test
+
+# Run lifi-adapter tests only
 cd packages/lifi-adapter && bun test
 
 # Build adapter
@@ -42,6 +26,32 @@ cd packages/lifi-adapter && bun run type-check
 
 # Development server (Rspack, http://localhost:3014)
 cd packages/lifi-adapter && bun dev
+
+# Run demo (mock mode)
+cd packages/lifi-adapter && bun run demo:mock
+
+```
+
+### npm workflow (alternative)
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests (all tests)
+npm test
+
+# Run lifi-adapter tests only
+cd packages/lifi-adapter && npm test
+
+# Build adapter
+cd packages/lifi-adapter && npm run build
+
+# Type check
+cd packages/lifi-adapter && npm run type-check
+
+# Development server (Rspack)
+cd packages/lifi-adapter && npm run dev
 ```
 
 ## Configuration
@@ -64,7 +74,7 @@ cd packages/lifi-adapter && bun dev
 - **Rates**: Real-time quotes and fee-aware effective rates (calculated with precise decimal arithmetic).
 - **Liquidity Depth**: Probing-based estimates using a bounded binary search for ≤0.5% and ≤1.0% slippage thresholds.
 - **Available Assets**: Token listing across supported chains retrieved from the provider API.
-- **Volume**: Not available from Li.Fi API — returned as an empty array.
+- **Volume**: Aggregated cross-chain transfer volumes from Li.Fi `/analytics/transfers` endpoint for 24h/7d/30d windows.
 
 
 ## Implementation Features
@@ -157,7 +167,7 @@ lifi-adapter-for-near/
 
 ## Limitations
 
-1. No aggregated volume data (Li.Fi API limitation)
-2. Liquidity estimates from quote probing, not orderbook snapshots
-3. Chain coverage limited to Li.Fi supported networks
-4. Conservative rate limiting defaults (tune via environment variables)
+1. Liquidity estimates from quote probing, not orderbook snapshots
+2. Chain coverage limited to Li.Fi supported networks
+3. Conservative rate limiting defaults (tune via environment variables)
+4. Volume data reflects only Li.Fi routed transfers (not all DEX activity)

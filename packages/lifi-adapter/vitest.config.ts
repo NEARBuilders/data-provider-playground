@@ -10,7 +10,7 @@ export default defineConfig({
       "src/__tests__/integration/**/*.test.ts"
     ],
     exclude: ["node_modules", "dist"],
-    testTimeout: 50000,
+    testTimeout: 15000,
   },
   resolve: {
     alias: {
