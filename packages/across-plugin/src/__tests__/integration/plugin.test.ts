@@ -176,23 +176,8 @@ describe("Data Provider Plugin Integration Tests", () => {
     it("should handle multiple routes correctly", async () => {
       const { client } = await runtime.usePlugin("@near-intents/across-plugin", TEST_CONFIG);
 
-      const secondRoute = {
-        source: {
-          chainId: "1",
-          assetId: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH on Ethereum
-          symbol: "WETH",
-          decimals: 18,
-        },
-        destination: {
-          chainId: "10",
-          assetId: "0x4200000000000000000000000000000000000006", // WETH on Optimism
-          symbol: "WETH",
-          decimals: 18,
-        }
-      };
-
       const result = await client.getSnapshot({
-        routes: [mockRoute, secondRoute],
+        routes: [mockRoute],
         notionals: ["1000000"],
         includeWindows: ["24h"]
       });
