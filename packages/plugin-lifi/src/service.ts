@@ -475,7 +475,35 @@ private async getListedAssets(): Promise<ListedAssetsType> {
          })
        );
 
-      const rateDiff = (quotes[0].rate - quotes[2].rate) / quotes[0].rate;
+      // Calculate rateDiff only if we have valid rates
+      // If all quotes failed (rate = 0), use conservative defaults
+      const validQuotes = quotes.filter(q => q.rate > 0);
+      
+      if (validQuotes.length === 0) {
+        // All quotes failed - return conservative defaults
+        liquidity.push({
+          route,
+          thresholds: [
+            {
+              maxAmountIn: (baseAmount * 10).toString(),
+              slippageBps: 50,
+            },
+            {
+              maxAmountIn: (baseAmount * 20).toString(),
+              slippageBps: 100,
+            },
+          ],
+          measuredAt: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      // Calculate rateDiff using valid quotes
+      // Use first and last valid quotes, or first and last if we have all 3
+      const firstRate = quotes[0].rate > 0 ? quotes[0].rate : validQuotes[0].rate;
+      const lastRate = quotes[2].rate > 0 ? quotes[2].rate : validQuotes[validQuotes.length - 1].rate;
+      
+      const rateDiff = firstRate > 0 ? (firstRate - lastRate) / firstRate : 0;
       const liquidity50bps = rateDiff < 0.005;
       const liquidity100bps = rateDiff < 0.01;
 
