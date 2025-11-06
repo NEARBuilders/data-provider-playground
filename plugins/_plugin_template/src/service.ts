@@ -12,12 +12,12 @@ import type {
 } from "./contract";
 
 // Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
+export type AssetType = z.infer<typeof Asset>;
+export type RateType = z.infer<typeof Rate>;
+export type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
+export type VolumeWindowType = z.infer<typeof VolumeWindow>;
+export type ListedAssetsType = z.infer<typeof ListedAssets>;
+export type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
 
 /**
  * Data Provider Service - Collects cross-chain bridge metrics from a single provider.

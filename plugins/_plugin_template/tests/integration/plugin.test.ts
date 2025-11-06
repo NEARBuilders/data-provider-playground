@@ -1,7 +1,8 @@
+import DataProviderTemplatePlugin from "@/index";
+import type { AssetType } from '@/service';
 import type { PluginRegistry } from "every-plugin";
 import { createLocalPluginRuntime } from "every-plugin/testing";
 import { beforeAll, describe, expect, it } from "vitest";
-import DataProviderTemplatePlugin from "../../index";
 
 // Mock route for testing
 const mockRoute = {
@@ -20,7 +21,7 @@ const mockRoute = {
 };
 
 const TEST_REGISTRY: PluginRegistry = {
-  "@every-plugin/template": {
+  "@data-provider/template": {
     remoteUrl: "http://localhost:3000/remoteEntry.js",
     version: "1.0.0",
     description: "Data provider template for integration testing",
@@ -28,7 +29,7 @@ const TEST_REGISTRY: PluginRegistry = {
 };
 
 const TEST_PLUGIN_MAP = {
-  "@every-plugin/template": DataProviderTemplatePlugin,
+  "@data-provider/template": DataProviderTemplatePlugin,
 } as const;
 
 const TEST_CONFIG = {
@@ -51,14 +52,14 @@ describe("Data Provider Plugin Integration Tests", () => {
   );
 
   beforeAll(async () => {
-    const { initialized } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+    const { initialized } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
     expect(initialized).toBeDefined();
-    expect(initialized.plugin.id).toBe("@every-plugin/template");
+    expect(initialized.plugin.id).toBe("@data-provider/template");
   });
 
   describe("getSnapshot procedure", () => {
     it("should fetch complete snapshot successfully", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -84,7 +85,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return volumes for requested time windows", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -93,14 +94,14 @@ describe("Data Provider Plugin Integration Tests", () => {
       });
 
       expect(result.volumes).toHaveLength(2);
-      expect(result.volumes.map(v => v.window)).toContain("24h");
-      expect(result.volumes.map(v => v.window)).toContain("7d");
-      expect(result.volumes[0].volumeUsd).toBeTypeOf("number");
-      expect(result.volumes[0].measuredAt).toBeTypeOf("string");
+      expect(result.volumes.map((v) => v.window)).toContain("24h");
+      expect(result.volumes.map((v) => v.window)).toContain("7d");
+      expect(result.volumes[0]?.volumeUsd).toBeTypeOf("number");
+      expect(result.volumes[0]?.measuredAt).toBeTypeOf("string");
     });
 
     it("should generate rates for all route/notional combinations", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -113,18 +114,18 @@ describe("Data Provider Plugin Integration Tests", () => {
 
       // Verify rate structure matches contract
       const rate = result.rates[0];
-      expect(rate.source).toEqual(mockRoute.source);
-      expect(rate.destination).toEqual(mockRoute.destination);
-      expect(rate.amountIn).toBe("1000");
-      expect(rate.amountOut).toBeTypeOf("string");
-      expect(rate.effectiveRate).toBeTypeOf("number");
-      expect(rate.effectiveRate).toBeGreaterThan(0);
-      expect(rate.totalFeesUsd).toBeTypeOf("number");
-      expect(rate.quotedAt).toBeTypeOf("string");
+      expect(rate?.source).toEqual(mockRoute.source);
+      expect(rate?.destination).toEqual(mockRoute.destination);
+      expect(rate?.amountIn).toBe("1000");
+      expect(rate?.amountOut).toBeTypeOf("string");
+      expect(rate?.effectiveRate).toBeTypeOf("number");
+      expect(rate?.effectiveRate).toBeGreaterThan(0);
+      expect(rate?.totalFeesUsd).toBeTypeOf("number");
+      expect(rate?.quotedAt).toBeTypeOf("string");
     });
 
     it("should provide liquidity at required thresholds", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -133,25 +134,25 @@ describe("Data Provider Plugin Integration Tests", () => {
       });
 
       expect(result.liquidity).toHaveLength(1);
-      expect(result.liquidity[0].route).toEqual(mockRoute);
+      expect(result.liquidity[0]?.route).toEqual(mockRoute);
 
-      const thresholds = result.liquidity[0].thresholds;
+      const thresholds = result.liquidity[0]?.thresholds;
       expect(thresholds).toHaveLength(2);
 
       // Should have both required thresholds
-      const bpsValues = thresholds.map(t => t.slippageBps);
+      const bpsValues = thresholds?.map(t => t.slippageBps);
       expect(bpsValues).toContain(50);
       expect(bpsValues).toContain(100);
 
       // Verify threshold structure
-      thresholds.forEach(threshold => {
+      thresholds?.forEach((threshold) => {
         expect(threshold.maxAmountIn).toBeTypeOf("string");
         expect(threshold.slippageBps).toBeTypeOf("number");
       });
     });
 
     it("should return list of supported assets", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -162,7 +163,7 @@ describe("Data Provider Plugin Integration Tests", () => {
       expect(result.listedAssets.assets.length).toBeGreaterThan(0);
 
       // Verify asset structure matches contract
-      result.listedAssets.assets.forEach(asset => {
+      result.listedAssets.assets.forEach((asset) => {
         expect(asset.chainId).toBeTypeOf("string");
         expect(asset.assetId).toBeTypeOf("string");
         expect(asset.symbol).toBeTypeOf("string");
@@ -173,7 +174,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should handle multiple routes correctly", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const secondRoute = {
         source: {
@@ -202,7 +203,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should require routes and notionals", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       // Should throw validation error for empty routes
       await expect(
@@ -224,7 +225,7 @@ describe("Data Provider Plugin Integration Tests", () => {
 
   describe("ping procedure", () => {
     it("should return healthy status", async () => {
-      const { client } = await runtime.usePlugin("@every-plugin/template", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.ping();
 

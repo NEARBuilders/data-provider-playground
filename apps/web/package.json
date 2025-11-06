@@ -13,7 +13,7 @@
     "@orpc/server": "catalog:",
     "@orpc/tanstack-query": "^1.10.0",
     "@orpc/zod": "catalog:",
-    "@plugin-builder/api": "workspace:*",
+    "@data-provider/api": "workspace:*",
     "@radix-ui/react-slot": "^1.2.3",
     "@tanstack/react-form": "^1.12.3",
     "@tanstack/react-query": "^5.85.5",

@@ -1,6 +1,6 @@
 import { Effect } from "every-plugin/effect";
 import { describe, expect, it } from "vitest";
-import { DataProviderService } from "../../service";
+import { DataProviderService } from "@/service";
 
 // Mock route for testing
 const mockRoute = {
@@ -60,8 +60,8 @@ describe("DataProviderService", () => {
       expect(result.volumes).toHaveLength(2);
       expect(result.volumes.map(v => v.window)).toContain("24h");
       expect(result.volumes.map(v => v.window)).toContain("7d");
-      expect(result.volumes[0].volumeUsd).toBeTypeOf("number");
-      expect(result.volumes[0].measuredAt).toBeTypeOf("string");
+      expect(result.volumes[0]?.volumeUsd).toBeTypeOf("number");
+      expect(result.volumes[0]?.measuredAt).toBeTypeOf("string");
     });
 
     it("should generate rates for all route/notional combinations", async () => {
@@ -78,14 +78,14 @@ describe("DataProviderService", () => {
 
       // Verify rate structure
       const rate = result.rates[0];
-      expect(rate.source).toEqual(mockRoute.source);
-      expect(rate.destination).toEqual(mockRoute.destination);
-      expect(rate.amountIn).toBe("1000");
-      expect(rate.amountOut).toBeTypeOf("string");
-      expect(rate.effectiveRate).toBeTypeOf("number");
-      expect(rate.effectiveRate).toBeGreaterThan(0);
-      expect(rate.totalFeesUsd).toBeTypeOf("number");
-      expect(rate.quotedAt).toBeTypeOf("string");
+      expect(rate?.source).toEqual(mockRoute.source);
+      expect(rate?.destination).toEqual(mockRoute.destination);
+      expect(rate?.amountIn).toBe("1000");
+      expect(rate?.amountOut).toBeTypeOf("string");
+      expect(rate?.effectiveRate).toBeTypeOf("number");
+      expect(rate?.effectiveRate).toBeGreaterThan(0);
+      expect(rate?.totalFeesUsd).toBeTypeOf("number");
+      expect(rate?.quotedAt).toBeTypeOf("string");
     });
 
     it("should provide liquidity at 50bps and 100bps thresholds", async () => {
@@ -98,18 +98,18 @@ describe("DataProviderService", () => {
       );
 
       expect(result.liquidity).toHaveLength(1);
-      expect(result.liquidity[0].route).toEqual(mockRoute);
+      expect(result.liquidity[0]?.route).toEqual(mockRoute);
 
-      const thresholds = result.liquidity[0].thresholds;
+      const thresholds = result.liquidity[0]?.thresholds;
       expect(thresholds).toHaveLength(2);
 
       // Should have both required thresholds
-      const bpsValues = thresholds.map(t => t.slippageBps);
+      const bpsValues = thresholds?.map(t => t.slippageBps);
       expect(bpsValues).toContain(50);
       expect(bpsValues).toContain(100);
 
       // Verify threshold structure
-      thresholds.forEach(threshold => {
+      thresholds?.forEach(threshold => {
         expect(threshold.maxAmountIn).toBeTypeOf("string");
         expect(threshold.slippageBps).toBeTypeOf("number");
       });

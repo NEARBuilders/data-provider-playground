@@ -28,7 +28,7 @@ export default function Home() {
   const [includeWindows, setIncludeWindows] = useState(["24h"]);
 
   // Health check
-  const healthCheck = useQuery(orpc.healthCheck.queryOptions());
+  const healthCheck = useQuery(orpc.health.queryOptions());
 
   // Plugin ping
   const pluginPing = useQuery(orpc.dataProvider.ping.queryOptions());
@@ -80,14 +80,14 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <div
                 className={`h-2 w-2 rounded-full ${
-                  healthCheck.data ? "bg-green-500" : "bg-red-500"
+                  healthCheck ? "bg-green-500" : "bg-red-500"
                 }`}
               />
               <span className="text-sm">
                 Main API:{" "}
                 {healthCheck.isLoading
                   ? "Checking..."
-                  : healthCheck.data
+                  : healthCheck
                   ? "Connected"
                   : "Disconnected"}
               </span>
@@ -95,7 +95,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <div
                 className={`h-2 w-2 rounded-full ${
-                  pluginPing.data?.status === "ok"
+                  pluginPing?.data?.status === "ok"
                     ? "bg-green-500"
                     : "bg-red-500"
                 }`}
@@ -104,12 +104,12 @@ export default function Home() {
                 Data Provider Plugin:{" "}
                 {pluginPing.isLoading
                   ? "Checking..."
-                  : pluginPing.data?.status === "ok"
+                  : pluginPing?.data?.status === "ok"
                   ? "Connected"
                   : "Disconnected"}
               </span>
             </div>
-            {pluginPing.data?.timestamp && (
+            {pluginPing?.data?.timestamp && (
               <p className="text-xs text-muted-foreground">
                 Last ping:{" "}
                 {new Date(pluginPing.data.timestamp).toLocaleTimeString()}
@@ -205,7 +205,7 @@ export default function Home() {
               </div>
             )}
 
-            {snapshotQuery.data?.volumes && (
+            {snapshotQuery?.data?.volumes && (
               <div className="space-y-2">
                 {snapshotQuery.data.volumes.map((volume, index) => (
                   <div key={index} className="flex justify-between items-center p-3 border rounded-lg">
@@ -241,7 +241,7 @@ export default function Home() {
               </div>
             )}
 
-            {snapshotQuery.data?.rates && (
+            {snapshotQuery?.data?.rates && (
               <div className="space-y-3">
                 {snapshotQuery.data.rates.map((rate, index) => (
                   <div key={index} className="p-4 border rounded-lg">
@@ -302,7 +302,7 @@ export default function Home() {
               </div>
             )}
 
-            {snapshotQuery.data?.liquidity && (
+            {snapshotQuery?.data?.liquidity && (
               <div className="space-y-3">
                 {snapshotQuery.data.liquidity.map((liquidity, index) => (
                   <div key={index} className="p-4 border rounded-lg">
@@ -347,7 +347,7 @@ export default function Home() {
               </div>
             )}
 
-            {snapshotQuery.data?.listedAssets && (
+            {snapshotQuery?.data?.listedAssets && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {snapshotQuery.data.listedAssets.assets.map((asset, index) => (
                   <div key={index} className="p-3 border rounded-lg">

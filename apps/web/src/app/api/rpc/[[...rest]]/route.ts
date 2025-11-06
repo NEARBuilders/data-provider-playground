@@ -1,5 +1,5 @@
-import { createContext } from "@plugin-builder/api/context";
-import { appRouter } from "@plugin-builder/api/routers/index";
+import { createContext } from "@data-provider/api/context";
+import { router } from "@data-provider/api";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
@@ -7,14 +7,14 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { onError } from "@orpc/server";
 import { NextRequest } from "next/server";
 
-const rpcHandler = new RPCHandler(appRouter, {
+const rpcHandler = new RPCHandler(router, {
 	interceptors: [
 		onError((error) => {
 			console.error(error);
 		}),
 	],
 });
-const apiHandler = new OpenAPIHandler(appRouter, {
+const apiHandler = new OpenAPIHandler(router, {
 	plugins: [
 		new OpenAPIReferencePlugin({
 			schemaConverters: [new ZodToJsonSchemaConverter()],
