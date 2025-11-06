@@ -15,7 +15,7 @@ import { HttpUtils } from "./utils/http";
  * 
  */
 export default createPlugin({
-  id: "@lifi/adapter",
+  id: "@Psianturi/lifi",
 
   variables: z.object({
     baseUrl: z.string().url().default("https://li.quest/v1"),

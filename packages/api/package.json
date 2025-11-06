@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "tsdown": "^0.15.5",
-    "@every-plugin/template": "file:../_plugin_template"
+    "@every-plugin/template": "file:../../plugins/_plugin_template"
   },
   "peerDependencies": {
     "typescript": "^5"

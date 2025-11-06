@@ -5,7 +5,8 @@
   "workspaces": {
     "packages": [
       "apps/*",
-      "packages/*"
+      "packages/*",
+      "plugins/*"
     ],
     "catalog": {
       "next": "16.0.0",

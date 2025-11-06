@@ -119,29 +119,6 @@ bun run test:integration   # Integration tests only (with mocks)
 bun run test:watch         # Watch mode
 ```
 
-### `bun run test` vs `bun test` - When to Use Each?
-
-| Use Case | Command | Why |
-|----------|---------|-----|
-| **CI/CD Pipeline** | `bun run test` ✅ | Deterministic, mocked, 100% pass rate |
-| **Production Build Validation** | `bun run test` ✅ | Consistent, no API rate limiting |
-| **Local Development** | `bun test` | Faster feedback, hits real API (educational) |
-| **Debugging Issues** | Both | `bun test` shows real API behavior |
-
-### Technical Differences
-
-| Aspect | `bun run test` (Vitest) | `bun test` (Bun native) |
-|--------|---|---|
-| **Runner** | Vitest v3.2.4 ✅ | Bun's native test runner |
-| **Mocks Loaded** | Yes (`setup.ts`) | No |
-| **Rate Limiting** | Mocked (won't fail) | Real (can fail) |
-| **Result** | 16 pass, 1 skip ✅ | May have failures (expected) |
-| **Speed** | ~30s | Varies |
-| **Use in Production** | ✅ YES | ❌ Not recommended |
-
-**Summary for Production**:
-- **Always use `bun run test`** for CI/CD pipelines and production validation
-- Use `bun test` only for local development to understand real API behavior
 
 ### Latest Test Results
 
@@ -150,7 +127,7 @@ bun run test:watch         # Watch mode
 - Location: `packages/lifi-adapter`
 - Test files executed: 4
 - Total tests: 16 passed, 1 skipped
-- Status: **100% passing** ✅ (production-ready)
+- Status: **100% passing** 
 
 
 ## Project Structure

@@ -19,7 +19,7 @@ const mockRoute = {
 };
 
 const TEST_REGISTRY = {
-  "@lifi/adapter": {
+  "@Psianturi/lifi": {
     remoteUrl: "http://localhost:3000/remoteEntry.js",
     version: "1.0.0",
     description: "LiFi adapter for integration testing",
@@ -27,7 +27,7 @@ const TEST_REGISTRY = {
 };
 
 const TEST_PLUGIN_MAP = {
-  "@lifi/adapter": DataProviderTemplatePlugin,
+  "@Psianturi/lifi": DataProviderTemplatePlugin,
 } as const;
 
 const TEST_CONFIG = {
@@ -49,14 +49,14 @@ describe("Data Provider Plugin Integration Tests", () => {
   );
 
   beforeAll(async () => {
-    const { initialized } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+    const { initialized } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
     expect(initialized).toBeDefined();
-    expect(initialized.plugin.id).toBe("@lifi/adapter");
+    expect(initialized.plugin.id).toBe("@Psianturi/lifi");
   });
 
   describe("getSnapshot procedure", () => {
     it("should fetch complete snapshot successfully", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG as any);
+  const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG as any);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -82,7 +82,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return volumes for requested time windows", async () => {
-      const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -105,7 +105,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should generate rates for all route/notional combinations", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+  const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -129,7 +129,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should provide liquidity at required thresholds", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+  const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -156,7 +156,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should return list of supported assets", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+  const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
@@ -178,7 +178,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     });
 
     it("should handle multiple routes correctly", async () => {
-  const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+  const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const secondRoute = {
         source: {
@@ -207,7 +207,7 @@ describe("Data Provider Plugin Integration Tests", () => {
     }, { timeout: 20000 });
 
     it("should require routes and notionals", async () => {
-      const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       // Should throw validation error for empty routes
       await expect(
@@ -229,7 +229,7 @@ describe("Data Provider Plugin Integration Tests", () => {
 
   describe("ping procedure", () => {
     it("should return healthy status", async () => {
-      const { client } = await runtime.usePlugin("@lifi/adapter", TEST_CONFIG);
+      const { client } = await runtime.usePlugin("@Psianturi/lifi", TEST_CONFIG);
 
       const result = await client.ping();
 
