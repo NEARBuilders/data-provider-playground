@@ -31,3 +31,8 @@ const dataProvider = await runtime.usePlugin("@data-provider/template", {
 });
 
 export const plugins = { dataProvider } as const;
+
+// if (typeof process !== 'undefined') {
+//   process.once('SIGTERM', () => runtime.shutdown().then(() => process.exit(0)));
+//   process.once('SIGINT', () => runtime.shutdown().then(() => process.exit(0)));
+// }

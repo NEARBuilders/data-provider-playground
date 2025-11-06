@@ -7,13 +7,12 @@ import type { AppRouterClient } from "@data-provider/api";
 import { DevConfigManager } from "@/lib/dev-config";
 
 function getRpcUrl(): string {
-	if (typeof window === "undefined") return "http://localhost:3001/api/rpc";
 	
 	const config = DevConfigManager.getConfig();
 	if (config?.enabled && config?.url) {
 		return `${config.url}/api/rpc`;
 	}
-	return `${window.location.origin}/api/rpc`;
+	return "http://localhost:8787/api/rpc";
 }
 
 export const queryClient = new QueryClient({
