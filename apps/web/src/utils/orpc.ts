@@ -4,6 +4,17 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { AppRouterClient } from "@data-provider/api";
+import { DevConfigManager } from "@/lib/dev-config";
+
+function getRpcUrl(): string {
+	if (typeof window === "undefined") return "http://localhost:3001/api/rpc";
+	
+	const config = DevConfigManager.getConfig();
+	if (config?.enabled && config?.url) {
+		return `${config.url}/api/rpc`;
+	}
+	return `${window.location.origin}/api/rpc`;
+}
 
 export const queryClient = new QueryClient({
 	queryCache: new QueryCache({
@@ -21,7 +32,7 @@ export const queryClient = new QueryClient({
 });
 
 export const link = new RPCLink({
-	url: `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3001"}/api/rpc`,
+	url: getRpcUrl,
 });
 
 export const client: AppRouterClient = createORPCClient(link);
