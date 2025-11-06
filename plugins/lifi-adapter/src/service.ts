@@ -67,6 +67,10 @@ type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
  * Li.Fi Data Provider Service - Collects cross-chain bridge metrics from Li.Fi API.
  */
 export class DataProviderService {
+  // Simple in-memory cache for volumes (1 hour TTL - reduce API calls)
+  private volumeCache: Map<string, { data: VolumeWindowType[]; timestamp: number }> = new Map();
+  private readonly VOLUME_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
   constructor(
     private readonly baseUrl: string
   ) { }
@@ -191,6 +195,15 @@ export class DataProviderService {
       return [];
     }
 
+    // Check cache first
+    const cacheKey = windows.sort().join(",");
+    const cached = this.volumeCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.VOLUME_CACHE_TTL) {
+      console.log(`✓ Using cached volumes for windows: ${cacheKey}`);
+      return cached.data;
+    }
+
     const volumes: VolumeWindowType[] = [];
     const now = Math.floor(Date.now() / 1000); // Unix timestamp
 
@@ -211,21 +224,25 @@ export class DataProviderService {
 
         const fromTimestamp = now - duration;
         
-        // Aggregate transfers for this window
+        // Aggregate transfers for this window using V2 endpoint with pagination
         let totalVolume = new Decimal(0);
         let cursor: string | undefined = undefined;
         let hasMore = true;
+        let pageCount = 0;
+        const MAX_PAGES_PER_WINDOW = 8; 
+        const LIMIT_PER_PAGE = 1000; 
 
-        while (hasMore) {
+        console.log(`[${window}] Fetching from v2 endpoint...`);
+
+        while (hasMore && pageCount < MAX_PAGES_PER_WINDOW) {
           try {
-            // Use v2 endpoint for analytics/transfers as it has proper pagination
-            // v1 endpoint only returns max 1000 transfers without pagination info
+            // Use v2 endpoint for analytics/transfers with proper pagination
             const baseAnalyticsUrl = this.baseUrl.replace('/v1', '/v2');
             const url = new URL(`${baseAnalyticsUrl}/analytics/transfers`);
             url.searchParams.set("status", "DONE");
             url.searchParams.set("fromTimestamp", String(fromTimestamp));
             url.searchParams.set("toTimestamp", String(now));
-            url.searchParams.set("limit", "1000");
+            url.searchParams.set("limit", String(LIMIT_PER_PAGE)); // Batch larger requests
             
             if (cursor) {
               url.searchParams.set("next", cursor);
@@ -247,12 +264,28 @@ export class DataProviderService {
             // Check if there's another page
             hasMore = response?.hasNext === true;
             cursor = response?.next;
+            pageCount++;
+
+            console.log(`  [page ${pageCount}] ${transfersList.length} transfers, cumulative: $${totalVolume.toNumber()}`);
+
+            // Add delay between pagination requests to respect rate limits
+            if (hasMore && pageCount < MAX_PAGES_PER_WINDOW) {
+              await new Promise(resolve => setTimeout(resolve, 500)); // 500ms spacing between requests
+            }
           } catch (pageError) {
-            console.warn(`Error fetching page for window ${window}:`, 
+            console.warn(`  [page ${pageCount}] Error:`, 
               pageError instanceof Error ? pageError.message : "Unknown error");
-            break;
+            // If first page fails, propagate the error
+            if (pageCount === 0) {
+              throw pageError;
+            }
+            // Otherwise stop pagination and use partial data collected so far
+            hasMore = false;
+            console.log(`  Stopped at page ${pageCount}, using partial data`);
           }
         }
+
+        console.log(`✓ [${window}] Volume: $${totalVolume.toNumber()} from ${pageCount} pages`);
 
         volumes.push({
           window,
@@ -262,7 +295,7 @@ export class DataProviderService {
       } catch (error) {
         console.error(`Failed to fetch volume for window ${window}:`, 
           error instanceof Error ? error.message : "Unknown error");
-        // Return empty for this window but continue with others
+        // Return zero for this window but continue with others
         volumes.push({
           window,
           volumeUsd: 0,
@@ -271,6 +304,8 @@ export class DataProviderService {
       }
     }
 
+    // Cache the result
+    this.volumeCache.set(cacheKey, { data: volumes, timestamp: Date.now() });
     return volumes;
   }
 
