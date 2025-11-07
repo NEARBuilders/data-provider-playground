@@ -34,25 +34,34 @@ export class DataProviderService {
    * Get complete snapshot of provider data for given routes and notionals.
    */
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        const [volumes, listedAssets] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
           this.getListedAssets()
         ]);
 
+        const rates = hasRoutes && hasNotionals
+          ? await this.getRates(params.routes!, params.notionals!)
+          : [];
+
+        const liquidity = hasRoutes
+          ? await this.getLiquidityDepth(params.routes!)
+          : [];
+
         return {
           volumes,
-          rates,
-          liquidity,
           listedAssets,
-        } satisfies ProviderSnapshotType;
+          ...(rates.length > 0 && { rates }),
+          ...(liquidity.length > 0 && { liquidity }),
+        };
       },
       catch: (error: unknown) =>
         new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)

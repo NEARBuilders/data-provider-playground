@@ -1,7 +1,8 @@
-import DataProviderTemplatePlugin from "@/index";
+import pluginDevConfig from "../plugin.dev";
+import Plugin from "@/index";
 
 declare module "every-plugin" {
   interface RegisteredPlugins {
-    "@data-provider/template": typeof DataProviderTemplatePlugin;
+    [pluginDevConfig.pluginId]: typeof Plugin;
   }
 }

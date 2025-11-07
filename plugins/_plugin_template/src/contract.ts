@@ -52,9 +52,9 @@ export const ListedAssets = z.object({
 // Complete snapshot of provider data
 export const ProviderSnapshot = z.object({
   volumes: z.array(VolumeWindow),
-  rates: z.array(Rate),
-  liquidity: z.array(LiquidityDepth),
   listedAssets: ListedAssets,
+  rates: z.array(Rate).optional(),
+  liquidity: z.array(LiquidityDepth).optional(),
 });
 
 // --- Contract ---
@@ -62,10 +62,10 @@ export const ProviderSnapshot = z.object({
 export const contract = oc.router({
   // Main endpoint - get complete snapshot for routes and notionals
   getSnapshot: oc
-    .route({ method: "GET", path: "/snapshot" })
+    .route({ method: "POST", path: "/snapshot" })
     .input(z.object({
-      routes: z.array(z.object({ source: Asset, destination: Asset })).min(1),
-      notionals: z.array(z.string()).min(1), // amounts in source units to quote
+      routes: z.array(z.object({ source: Asset, destination: Asset })).optional(),
+      notionals: z.array(z.string()).optional(),
       includeWindows: z.array(z.enum(["24h", "7d", "30d"]))
         .default(["24h"]).optional(),
     }))

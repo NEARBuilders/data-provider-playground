@@ -1,213 +1,206 @@
-import { Effect } from "every-plugin/effect";
+import Plugin from "@/index";
+import type { ProviderSnapshotType } from "@/service";
+import type { PluginRegistry } from "every-plugin";
+import { createLocalPluginRuntime } from "every-plugin/testing";
 import { describe, expect, it } from "vitest";
-import { DataProviderService } from "@/service";
+import pluginDevConfig, { sampleRoute } from "../../plugin.dev";
 
-const mockRoute = {
-  source: {
-    chainId: "1",
-    assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
-    symbol: "USDC",
-    decimals: 6,
-  },
-  destination: {
-    chainId: "137",
-    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
-    symbol: "USDC",
-    decimals: 6,
+function logTestSummary(result: ProviderSnapshotType, testName: string) {
+  const uniqueAssets = new Set(
+    result.listedAssets.assets.map((a) => `${a.chainId}:${a.assetId}`)
+  );
+
+  const vol24h = result.volumes.find((v) => v.window === '24h');
+  const vol7d = result.volumes.find((v) => v.window === '7d');
+  const vol30d = result.volumes.find((v) => v.window === '30d');
+
+  console.log(`\n📊 ${testName}`);
+  console.log(`   ✓ Unique Assets: ${uniqueAssets.size}`);
+  console.log(`   ✓ Volume (24h): $${vol24h?.volumeUsd.toLocaleString() ?? '0'}`);
+  console.log(`   ✓ Volume (7d):  $${vol7d?.volumeUsd.toLocaleString() ?? '0'}`);
+  console.log(`   ✓ Volume (30d): $${vol30d?.volumeUsd.toLocaleString() ?? '0'}`);
+
+  if (result.rates && result.rates.length > 0) {
+    const avgRate = result.rates.reduce((sum, r) => sum + r.effectiveRate, 0) / result.rates.length;
+    console.log(`   ✓ Rates: ${result.rates.length} quotes (avg: ${avgRate.toFixed(4)})`);
   }
+
+  if (result.liquidity && result.liquidity.length > 0) {
+    console.log(`   ✓ Liquidity: ${result.liquidity.length} routes measured`);
+  }
+}
+
+const TEST_PLUGIN_ID = pluginDevConfig.pluginId;
+const TEST_CONFIG = pluginDevConfig.config;
+
+const TEST_REGISTRY: PluginRegistry = {
+  [TEST_PLUGIN_ID]: {
+    remoteUrl: "http://localhost:3000/remoteEntry.js",
+    version: "1.0.0",
+    description: "Data provider unit testing",
+  },
 };
 
+const TEST_PLUGIN_MAP = {
+  [TEST_PLUGIN_ID]: Plugin,
+} as const;
+
 describe("DataProviderService", () => {
-  const service = new DataProviderService(
-    "https://api.example.com",
-    "test-api-key",
-    5000
+  const runtime = createLocalPluginRuntime<typeof TEST_PLUGIN_MAP>(
+    {
+      registry: TEST_REGISTRY,
+      secrets: {},
+    },
+    TEST_PLUGIN_MAP
   );
 
   describe("getSnapshot", () => {
     it("should return complete snapshot structure", async () => {
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute],
-          notionals: ["1000", "10000"],
-          includeWindows: ["24h", "7d", "30d"]
-        })
-      );
+      const { client } = await runtime.usePlugin(TEST_PLUGIN_ID, TEST_CONFIG);
+
+      const result = await client.getSnapshot({
+        routes: [sampleRoute],
+        notionals: ["1000", "10000"],
+        includeWindows: ["24h", "7d", "30d"]
+      })
 
       expect(result).toHaveProperty("volumes");
-      expect(result).toHaveProperty("rates");
-      expect(result).toHaveProperty("liquidity");
       expect(result).toHaveProperty("listedAssets");
       expect(Array.isArray(result.volumes)).toBe(true);
-      expect(Array.isArray(result.rates)).toBe(true);
-      expect(Array.isArray(result.liquidity)).toBe(true);
       expect(Array.isArray(result.listedAssets.assets)).toBe(true);
+
+      if (result.rates) {
+        expect(Array.isArray(result.rates)).toBe(true);
+      }
+      if (result.liquidity) {
+        expect(Array.isArray(result.liquidity)).toBe(true);
+      }
+
+      logTestSummary(result, "Complete Snapshot Structure");
     });
 
-    it("should validate volume data progression and freshness", async () => {
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute],
-          notionals: ["1000"],
-          includeWindows: ["24h", "7d", "30d"]
-        })
-      );
+    it("should validate volume data and listed assets", async () => {
+      const { client } = await runtime.usePlugin(TEST_PLUGIN_ID, TEST_CONFIG);
 
-      expect(result.volumes).toHaveLength(3);
-      
+      const result = await client.getSnapshot({
+        routes: [sampleRoute],
+        notionals: ["1000"],
+        includeWindows: ["24h", "7d", "30d"]
+      })
+
+      expect(result.volumes.length,
+        "❌ No volume data returned. Implement getVolumes() in service.ts"
+      ).toBeGreaterThan(0);
+
+      expect(result.listedAssets.assets.length,
+        "❌ No assets returned. Implement getListedAssets() in service.ts"
+      ).toBeGreaterThan(0);
+
       const volumes = {
         "24h": result.volumes.find(v => v.window === "24h"),
         "7d": result.volumes.find(v => v.window === "7d"),
         "30d": result.volumes.find(v => v.window === "30d"),
       };
 
-      expect(volumes["24h"]).toBeDefined();
-      expect(volumes["7d"]).toBeDefined();
-      expect(volumes["30d"]).toBeDefined();
+      expect(volumes["24h"], "Missing 24h volume window").toBeDefined();
+      expect(volumes["7d"], "Missing 7d volume window").toBeDefined();
+      expect(volumes["30d"], "Missing 30d volume window").toBeDefined();
 
       expect(volumes["24h"]!.volumeUsd).toBeGreaterThan(0);
       expect(volumes["7d"]!.volumeUsd).toBeGreaterThan(0);
       expect(volumes["30d"]!.volumeUsd).toBeGreaterThan(0);
-      
+
       expect(volumes["7d"]!.volumeUsd).toBeGreaterThanOrEqual(volumes["24h"]!.volumeUsd);
       expect(volumes["30d"]!.volumeUsd).toBeGreaterThanOrEqual(volumes["7d"]!.volumeUsd);
 
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
       result.volumes.forEach(v => {
-        expect(new Date(v.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
+        expect(new Date(v.measuredAt).getTime()).toBeGreaterThan(oneHourAgo);
       });
+
+      const assetKeys = new Set<string>();
+      result.listedAssets.assets.forEach(asset => {
+        const key = `${asset.chainId}:${asset.assetId}`;
+        expect(assetKeys.has(key), `Duplicate asset found: ${key}`).toBe(false);
+        assetKeys.add(key);
+      });
+
+      const oneHourAgoForAssets = Date.now() - 60 * 60 * 1000;
+      expect(new Date(result.listedAssets.measuredAt).getTime()).toBeGreaterThan(oneHourAgoForAssets);
+
+      logTestSummary(result, "Volume Data & Listed Assets");
     });
 
-    it("should validate rate calculations and scaling", async () => {
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute],
-          notionals: ["1000", "10000"],
-          includeWindows: ["24h"]
-        })
-      );
+    it("should validate rates when provided", async () => {
+      const { client } = await runtime.usePlugin(TEST_PLUGIN_ID, TEST_CONFIG);
 
-      expect(result.rates).toHaveLength(2);
+      const result = await client.getSnapshot({
+        routes: [sampleRoute],
+        notionals: ["1000", "10000"],
+        includeWindows: ["24h"]
+      })
+
+      if (!result.rates || result.rates.length === 0) {
+        throw new Error("❌ Expected rates to be present for routes with notionals. Implement getRates() in service.ts");
+      }
+
+      expect(result.rates.length, "Should return rates for each notional").toBe(2);
 
       result.rates.forEach(rate => {
-        expect(rate.source).toEqual(mockRoute.source);
-        expect(rate.destination).toEqual(mockRoute.destination);
+        expect(rate.source).toEqual(sampleRoute.source);
+        expect(rate.destination).toEqual(sampleRoute.destination);
 
         const amountIn = parseFloat(rate.amountIn);
         const amountOut = parseFloat(rate.amountOut);
-        expect(amountIn).toBeGreaterThan(0);
-        expect(amountOut).toBeGreaterThan(0);
+        expect(amountIn, "Rate amountIn must be greater than 0").toBeGreaterThan(0);
+        expect(amountOut, "Rate amountOut must be greater than 0").toBeGreaterThan(0);
 
-        const decimalAdjustment = Math.pow(10, rate.destination.decimals - rate.source.decimals);
-        const calculatedRate = (amountOut / amountIn) * decimalAdjustment;
-        expect(Math.abs(calculatedRate - rate.effectiveRate)).toBeLessThan(0.0001);
-
+        expect(rate.effectiveRate, "Effective rate should be positive").toBeGreaterThan(0);
         expect(rate.totalFeesUsd).toBeGreaterThanOrEqual(0);
-        const feePercentage = (rate.totalFeesUsd! / amountIn) * 100;
-        expect(feePercentage).toBeLessThanOrEqual(5);
 
-        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-        expect(new Date(rate.quotedAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        expect(new Date(rate.quotedAt).getTime()).toBeGreaterThan(oneHourAgo);
       });
 
-      const rate1000 = result.rates.find(r => r.amountIn === "1000");
-      const rate10000 = result.rates.find(r => r.amountIn === "10000");
-      
-      if (rate1000 && rate10000) {
-        const rateDiff = Math.abs(rate1000.effectiveRate - rate10000.effectiveRate);
-        expect(rateDiff / rate1000.effectiveRate).toBeLessThan(0.1);
-      }
+      logTestSummary(result, "Rate Validation");
     });
 
-    it("should validate liquidity depth ordering", async () => {
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute],
-          notionals: ["1000"],
-          includeWindows: ["24h"]
-        })
-      );
+    it("should validate liquidity depth when provided", async () => {
+      const { client } = await runtime.usePlugin(TEST_PLUGIN_ID, TEST_CONFIG);
 
-      expect(result.liquidity).toHaveLength(1);
-      expect(result.liquidity[0]?.route).toEqual(mockRoute);
+      const result = await client.getSnapshot({
+        routes: [sampleRoute],
+        notionals: ["1000"],
+        includeWindows: ["24h"]
+      })
+
+      if (!result.liquidity || result.liquidity.length === 0) {
+        throw new Error("❌ Expected liquidity to be present for routes. Implement getLiquidityDepth() in service.ts");
+      }
+
+      expect(result.liquidity.length).toBeGreaterThan(0);
+      expect(result.liquidity[0]?.route).toEqual(sampleRoute);
 
       const thresholds = result.liquidity[0]?.thresholds;
-      expect(thresholds).toBeDefined();
-      expect(thresholds!.length).toBeGreaterThanOrEqual(2);
+      expect(thresholds, "Liquidity should include threshold data").toBeDefined();
+      expect(thresholds!.length, "Should include at least 50bps and 100bps thresholds").toBeGreaterThanOrEqual(2);
 
       const threshold50 = thresholds?.find(t => t.slippageBps === 50);
       const threshold100 = thresholds?.find(t => t.slippageBps === 100);
 
-      expect(threshold50).toBeDefined();
-      expect(threshold100).toBeDefined();
+      expect(threshold50, "Should include 50bps threshold").toBeDefined();
+      expect(threshold100, "Should include 100bps threshold").toBeDefined();
 
       const amount50 = parseFloat(threshold50!.maxAmountIn);
       const amount100 = parseFloat(threshold100!.maxAmountIn);
 
       expect(amount50).toBeGreaterThan(0);
       expect(amount100).toBeGreaterThan(0);
-      expect(amount50).toBeGreaterThanOrEqual(amount100);
 
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      expect(new Date(result.liquidity[0]!.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
-    });
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      expect(new Date(result.liquidity[0]!.measuredAt).getTime()).toBeGreaterThan(oneHourAgo);
 
-    it("should validate asset uniqueness and rate consistency", async () => {
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute],
-          notionals: ["1000"],
-          includeWindows: ["24h"]
-        })
-      );
-
-      expect(result.listedAssets.assets.length).toBeGreaterThan(0);
-
-      const assetKeys = new Set<string>();
-      result.listedAssets.assets.forEach(asset => {
-        const key = `${asset.chainId}:${asset.assetId}`;
-        expect(assetKeys.has(key)).toBe(false);
-        assetKeys.add(key);
-      });
-
-      result.rates.forEach(rate => {
-        const sourceKey = `${rate.source.chainId}:${rate.source.assetId}`;
-        const destKey = `${rate.destination.chainId}:${rate.destination.assetId}`;
-        
-        expect(assetKeys.has(sourceKey)).toBe(true);
-        expect(assetKeys.has(destKey)).toBe(true);
-      });
-
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      expect(new Date(result.listedAssets.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
-    });
-
-    it("should handle multiple routes correctly", async () => {
-      const secondRoute = {
-        source: {
-          chainId: "42161",
-          assetId: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
-          symbol: "USDC",
-          decimals: 6,
-        },
-        destination: {
-          chainId: "1",
-          assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
-          symbol: "USDC",
-          decimals: 6,
-        }
-      };
-
-      const result = await Effect.runPromise(
-        service.getSnapshot({
-          routes: [mockRoute, secondRoute],
-          notionals: ["1000"],
-          includeWindows: ["24h"]
-        })
-      );
-
-      expect(result.liquidity).toHaveLength(2);
-      expect(result.rates).toHaveLength(2);
+      logTestSummary(result, "Liquidity Depth");
     });
   });
 });

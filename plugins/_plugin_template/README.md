@@ -9,19 +9,19 @@ Template for building single-provider bridge data adapters for the NEAR Intents 
 2. **Copy template**:
 
    ```bash
-   cp -r packages/_plugin_template packages/your-provider-plugin
-   cd packages/your-provider-plugin
+   cp -r plugins/_plugin_template plugins/your-provider-plugin
+   cd plugins/your-provider-plugin
    ```
 
-3. **Replace mock implementation** in `src/service.ts`:
+3. **Update configuration** in `plugin.dev.ts`:
+   - Set your plugin's base URL and timeout
+   - Update `sampleRoute` with a real route for your provider
+   - Configure API key environment variable
+
+4. **Replace mock implementation** in `src/service.ts`:
    - Replace `getRates()`, `getVolumes()`, `getLiquidityDepth()`, `getListedAssets()` with real API calls
    - Implement decimal normalization for `effectiveRate` calculations
    - Add proper error handling for rate limits and timeouts
-
-4. **Update plugin ID** in `src/index.ts`:
-   ```typescript
-   id: "@your-org/your-provider-name"
-   ```
 
 ## Running Tests
 
@@ -36,7 +36,57 @@ npm run test:unit
 npm run test:integration
 ```
 
-Tests pass with mock implementation and serve as validation checkpoints for your real provider API.
+## Understanding Tests
+
+Tests validate your implementation with **clear failure messages** when incomplete.
+
+### Expected Test Behavior
+
+**With Empty Template Implementation:**
+- ❌ 3/4 unit tests fail with actionable error messages
+- ❌ 1/2 integration tests fail
+- Each failure tells you which method to implement
+
+**With Working Implementation:**
+- ✅ All tests pass
+- 📊 Console displays data quality metrics for easy review
+
+### Test Output Example
+
+When tests pass with a real implementation, you'll see:
+
+```
+📊 Volume Data & Listed Assets
+   ✓ Unique Assets: 12
+   ✓ Volume (24h): $1,234,567
+   ✓ Volume (7d):  $8,901,234
+   ✓ Volume (30d): $35,678,901
+
+📊 Rate Validation
+   ✓ Unique Assets: 12
+   ✓ Volume (24h): $1,234,567
+   ✓ Rates: 4 quotes (avg: 0.9998)
+
+📊 Liquidity Depth
+   ✓ Unique Assets: 12
+   ✓ Liquidity: 2 routes measured
+```
+
+This makes it easy to review multiple plugin implementations quickly.
+
+### Common Test Failures
+
+**"No volume data returned"**
+→ Implement `getVolumes()` in `src/service.ts` to fetch volume metrics
+
+**"No assets returned"**
+→ Implement `getListedAssets()` in `src/service.ts` to return supported assets
+
+**"Expected rates to be present"**
+→ Implement `getRates()` to fetch quotes for given routes and notionals
+
+**"Expected liquidity to be present"**
+→ Implement `getLiquidityDepth()` to measure max amounts at 50bps and 100bps slippage
 
 ## Environment Variables
 
