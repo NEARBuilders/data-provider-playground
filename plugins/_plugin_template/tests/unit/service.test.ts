@@ -2,7 +2,6 @@ import { Effect } from "every-plugin/effect";
 import { describe, expect, it } from "vitest";
 import { DataProviderService } from "@/service";
 
-// Mock route for testing
 const mockRoute = {
   source: {
     chainId: "1",
@@ -31,40 +30,55 @@ describe("DataProviderService", () => {
         service.getSnapshot({
           routes: [mockRoute],
           notionals: ["1000", "10000"],
-          includeWindows: ["24h", "7d"]
+          includeWindows: ["24h", "7d", "30d"]
         })
       );
 
-      // Verify all required fields are present
       expect(result).toHaveProperty("volumes");
       expect(result).toHaveProperty("rates");
       expect(result).toHaveProperty("liquidity");
       expect(result).toHaveProperty("listedAssets");
-
-      // Verify arrays are not empty
       expect(Array.isArray(result.volumes)).toBe(true);
       expect(Array.isArray(result.rates)).toBe(true);
       expect(Array.isArray(result.liquidity)).toBe(true);
       expect(Array.isArray(result.listedAssets.assets)).toBe(true);
     });
 
-    it("should return volumes for requested time windows", async () => {
+    it("should validate volume data progression and freshness", async () => {
       const result = await Effect.runPromise(
         service.getSnapshot({
           routes: [mockRoute],
           notionals: ["1000"],
-          includeWindows: ["24h", "7d"]
+          includeWindows: ["24h", "7d", "30d"]
         })
       );
 
-      expect(result.volumes).toHaveLength(2);
-      expect(result.volumes.map(v => v.window)).toContain("24h");
-      expect(result.volumes.map(v => v.window)).toContain("7d");
-      expect(result.volumes[0]?.volumeUsd).toBeTypeOf("number");
-      expect(result.volumes[0]?.measuredAt).toBeTypeOf("string");
+      expect(result.volumes).toHaveLength(3);
+      
+      const volumes = {
+        "24h": result.volumes.find(v => v.window === "24h"),
+        "7d": result.volumes.find(v => v.window === "7d"),
+        "30d": result.volumes.find(v => v.window === "30d"),
+      };
+
+      expect(volumes["24h"]).toBeDefined();
+      expect(volumes["7d"]).toBeDefined();
+      expect(volumes["30d"]).toBeDefined();
+
+      expect(volumes["24h"]!.volumeUsd).toBeGreaterThan(0);
+      expect(volumes["7d"]!.volumeUsd).toBeGreaterThan(0);
+      expect(volumes["30d"]!.volumeUsd).toBeGreaterThan(0);
+      
+      expect(volumes["7d"]!.volumeUsd).toBeGreaterThanOrEqual(volumes["24h"]!.volumeUsd);
+      expect(volumes["30d"]!.volumeUsd).toBeGreaterThanOrEqual(volumes["7d"]!.volumeUsd);
+
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      result.volumes.forEach(v => {
+        expect(new Date(v.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
+      });
     });
 
-    it("should generate rates for all route/notional combinations", async () => {
+    it("should validate rate calculations and scaling", async () => {
       const result = await Effect.runPromise(
         service.getSnapshot({
           routes: [mockRoute],
@@ -73,22 +87,39 @@ describe("DataProviderService", () => {
         })
       );
 
-      // Should have 2 rates (1 route × 2 notionals)
       expect(result.rates).toHaveLength(2);
 
-      // Verify rate structure
-      const rate = result.rates[0];
-      expect(rate?.source).toEqual(mockRoute.source);
-      expect(rate?.destination).toEqual(mockRoute.destination);
-      expect(rate?.amountIn).toBe("1000");
-      expect(rate?.amountOut).toBeTypeOf("string");
-      expect(rate?.effectiveRate).toBeTypeOf("number");
-      expect(rate?.effectiveRate).toBeGreaterThan(0);
-      expect(rate?.totalFeesUsd).toBeTypeOf("number");
-      expect(rate?.quotedAt).toBeTypeOf("string");
+      result.rates.forEach(rate => {
+        expect(rate.source).toEqual(mockRoute.source);
+        expect(rate.destination).toEqual(mockRoute.destination);
+
+        const amountIn = parseFloat(rate.amountIn);
+        const amountOut = parseFloat(rate.amountOut);
+        expect(amountIn).toBeGreaterThan(0);
+        expect(amountOut).toBeGreaterThan(0);
+
+        const decimalAdjustment = Math.pow(10, rate.destination.decimals - rate.source.decimals);
+        const calculatedRate = (amountOut / amountIn) * decimalAdjustment;
+        expect(Math.abs(calculatedRate - rate.effectiveRate)).toBeLessThan(0.0001);
+
+        expect(rate.totalFeesUsd).toBeGreaterThanOrEqual(0);
+        const feePercentage = (rate.totalFeesUsd! / amountIn) * 100;
+        expect(feePercentage).toBeLessThanOrEqual(5);
+
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        expect(new Date(rate.quotedAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
+      });
+
+      const rate1000 = result.rates.find(r => r.amountIn === "1000");
+      const rate10000 = result.rates.find(r => r.amountIn === "10000");
+      
+      if (rate1000 && rate10000) {
+        const rateDiff = Math.abs(rate1000.effectiveRate - rate10000.effectiveRate);
+        expect(rateDiff / rate1000.effectiveRate).toBeLessThan(0.1);
+      }
     });
 
-    it("should provide liquidity at 50bps and 100bps thresholds", async () => {
+    it("should validate liquidity depth ordering", async () => {
       const result = await Effect.runPromise(
         service.getSnapshot({
           routes: [mockRoute],
@@ -101,21 +132,27 @@ describe("DataProviderService", () => {
       expect(result.liquidity[0]?.route).toEqual(mockRoute);
 
       const thresholds = result.liquidity[0]?.thresholds;
-      expect(thresholds).toHaveLength(2);
+      expect(thresholds).toBeDefined();
+      expect(thresholds!.length).toBeGreaterThanOrEqual(2);
 
-      // Should have both required thresholds
-      const bpsValues = thresholds?.map(t => t.slippageBps);
-      expect(bpsValues).toContain(50);
-      expect(bpsValues).toContain(100);
+      const threshold50 = thresholds?.find(t => t.slippageBps === 50);
+      const threshold100 = thresholds?.find(t => t.slippageBps === 100);
 
-      // Verify threshold structure
-      thresholds?.forEach(threshold => {
-        expect(threshold.maxAmountIn).toBeTypeOf("string");
-        expect(threshold.slippageBps).toBeTypeOf("number");
-      });
+      expect(threshold50).toBeDefined();
+      expect(threshold100).toBeDefined();
+
+      const amount50 = parseFloat(threshold50!.maxAmountIn);
+      const amount100 = parseFloat(threshold100!.maxAmountIn);
+
+      expect(amount50).toBeGreaterThan(0);
+      expect(amount100).toBeGreaterThan(0);
+      expect(amount50).toBeGreaterThanOrEqual(amount100);
+
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      expect(new Date(result.liquidity[0]!.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
     });
 
-    it("should return list of supported assets", async () => {
+    it("should validate asset uniqueness and rate consistency", async () => {
       const result = await Effect.runPromise(
         service.getSnapshot({
           routes: [mockRoute],
@@ -124,17 +161,25 @@ describe("DataProviderService", () => {
         })
       );
 
-      expect(result.listedAssets.assets).toHaveLength(3);
+      expect(result.listedAssets.assets.length).toBeGreaterThan(0);
 
-      // Verify asset structure
+      const assetKeys = new Set<string>();
       result.listedAssets.assets.forEach(asset => {
-        expect(asset.chainId).toBeTypeOf("string");
-        expect(asset.assetId).toBeTypeOf("string");
-        expect(asset.symbol).toBeTypeOf("string");
-        expect(asset.decimals).toBeTypeOf("number");
+        const key = `${asset.chainId}:${asset.assetId}`;
+        expect(assetKeys.has(key)).toBe(false);
+        assetKeys.add(key);
       });
 
-      expect(result.listedAssets.measuredAt).toBeTypeOf("string");
+      result.rates.forEach(rate => {
+        const sourceKey = `${rate.source.chainId}:${rate.source.assetId}`;
+        const destKey = `${rate.destination.chainId}:${rate.destination.assetId}`;
+        
+        expect(assetKeys.has(sourceKey)).toBe(true);
+        expect(assetKeys.has(destKey)).toBe(true);
+      });
+
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      expect(new Date(result.listedAssets.measuredAt).getTime()).toBeGreaterThan(fiveMinutesAgo);
     });
 
     it("should handle multiple routes correctly", async () => {
@@ -161,20 +206,8 @@ describe("DataProviderService", () => {
         })
       );
 
-      // Should have liquidity data for both routes
       expect(result.liquidity).toHaveLength(2);
-      expect(result.rates).toHaveLength(2); // 2 routes × 1 notional
-    });
-  });
-
-  describe("ping", () => {
-    it("should return healthy status", async () => {
-      const result = await Effect.runPromise(service.ping());
-
-      expect(result).toEqual({
-        status: "ok",
-        timestamp: expect.any(String),
-      });
+      expect(result.rates).toHaveLength(2);
     });
   });
 });

@@ -15,11 +15,12 @@
       "@orpc/client": "^1.10.0",
       "@orpc/openapi": "^1.10.0",
       "@orpc/zod": "^1.10.0",
-      "every-plugin": "0.4.6"
+      "every-plugin": "0.4.9"
     }
   },
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter='./apps/*'",
+    "dev:plugins": "turbo build --filter='./packages/*' && turbo dev --filter='./plugins/*'",
     "build": "turbo build",
     "check-types": "turbo check-types"
   },

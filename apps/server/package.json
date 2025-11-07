@@ -2,7 +2,7 @@
   "name": "host",
   "type": "module",
   "scripts": {
-    "dev": "PORT=8787 bun --hot run src/index.ts",
+    "dev": "bun --hot run src/index.ts",
     "build": "tsc --noEmit",
     "type-check": "tsc --noEmit"
   },

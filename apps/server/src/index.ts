@@ -64,14 +64,14 @@ app.all('/api/rpc/*', async (c) => {
 })
 
 // REST/OpenAPI endpoint (w/ OpenAPI Documentation UI)
-app.all('/api/v1/*', async (c) => {
+app.all('/api/*', async (c) => {
   if (!apiHandler) return c.text('Loading...', 503)
 
   const req = c.req.raw
   const context = await createContext(req)
 
   const result = await apiHandler.handle(req, {
-    prefix: '/api/v1',
+    prefix: '/api',
     context
   });
 

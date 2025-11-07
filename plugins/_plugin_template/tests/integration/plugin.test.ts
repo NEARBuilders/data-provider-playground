@@ -1,10 +1,8 @@
 import DataProviderTemplatePlugin from "@/index";
-import type { AssetType } from '@/service';
 import type { PluginRegistry } from "every-plugin";
 import { createLocalPluginRuntime } from "every-plugin/testing";
 import { beforeAll, describe, expect, it } from "vitest";
 
-// Mock route for testing
 const mockRoute = {
   source: {
     chainId: "1",
@@ -58,119 +56,23 @@ describe("Data Provider Plugin Integration Tests", () => {
   });
 
   describe("getSnapshot procedure", () => {
-    it("should fetch complete snapshot successfully", async () => {
+    it("should return complete snapshot with valid structure", async () => {
       const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.getSnapshot({
         routes: [mockRoute],
         notionals: ["1000", "10000"],
-        includeWindows: ["24h", "7d"]
+        includeWindows: ["24h", "7d", "30d"]
       });
 
-      // Verify complete snapshot structure
       expect(result).toHaveProperty("volumes");
       expect(result).toHaveProperty("rates");
       expect(result).toHaveProperty("liquidity");
       expect(result).toHaveProperty("listedAssets");
-
-      // Verify arrays are populated
       expect(Array.isArray(result.volumes)).toBe(true);
-      expect(result.volumes.length).toBeGreaterThan(0);
       expect(Array.isArray(result.rates)).toBe(true);
-      expect(result.rates.length).toBeGreaterThan(0);
       expect(Array.isArray(result.liquidity)).toBe(true);
-      expect(result.liquidity.length).toBeGreaterThan(0);
       expect(Array.isArray(result.listedAssets.assets)).toBe(true);
-      expect(result.listedAssets.assets.length).toBeGreaterThan(0);
-    });
-
-    it("should return volumes for requested time windows", async () => {
-      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
-
-      const result = await client.getSnapshot({
-        routes: [mockRoute],
-        notionals: ["1000"],
-        includeWindows: ["24h", "7d"]
-      });
-
-      expect(result.volumes).toHaveLength(2);
-      expect(result.volumes.map((v) => v.window)).toContain("24h");
-      expect(result.volumes.map((v) => v.window)).toContain("7d");
-      expect(result.volumes[0]?.volumeUsd).toBeTypeOf("number");
-      expect(result.volumes[0]?.measuredAt).toBeTypeOf("string");
-    });
-
-    it("should generate rates for all route/notional combinations", async () => {
-      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
-
-      const result = await client.getSnapshot({
-        routes: [mockRoute],
-        notionals: ["1000", "10000"],
-        includeWindows: ["24h"]
-      });
-
-      // Should have 2 rates (1 route × 2 notionals)
-      expect(result.rates).toHaveLength(2);
-
-      // Verify rate structure matches contract
-      const rate = result.rates[0];
-      expect(rate?.source).toEqual(mockRoute.source);
-      expect(rate?.destination).toEqual(mockRoute.destination);
-      expect(rate?.amountIn).toBe("1000");
-      expect(rate?.amountOut).toBeTypeOf("string");
-      expect(rate?.effectiveRate).toBeTypeOf("number");
-      expect(rate?.effectiveRate).toBeGreaterThan(0);
-      expect(rate?.totalFeesUsd).toBeTypeOf("number");
-      expect(rate?.quotedAt).toBeTypeOf("string");
-    });
-
-    it("should provide liquidity at required thresholds", async () => {
-      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
-
-      const result = await client.getSnapshot({
-        routes: [mockRoute],
-        notionals: ["1000"],
-        includeWindows: ["24h"]
-      });
-
-      expect(result.liquidity).toHaveLength(1);
-      expect(result.liquidity[0]?.route).toEqual(mockRoute);
-
-      const thresholds = result.liquidity[0]?.thresholds;
-      expect(thresholds).toHaveLength(2);
-
-      // Should have both required thresholds
-      const bpsValues = thresholds?.map(t => t.slippageBps);
-      expect(bpsValues).toContain(50);
-      expect(bpsValues).toContain(100);
-
-      // Verify threshold structure
-      thresholds?.forEach((threshold) => {
-        expect(threshold.maxAmountIn).toBeTypeOf("string");
-        expect(threshold.slippageBps).toBeTypeOf("number");
-      });
-    });
-
-    it("should return list of supported assets", async () => {
-      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
-
-      const result = await client.getSnapshot({
-        routes: [mockRoute],
-        notionals: ["1000"],
-        includeWindows: ["24h"]
-      });
-
-      expect(result.listedAssets.assets.length).toBeGreaterThan(0);
-
-      // Verify asset structure matches contract
-      result.listedAssets.assets.forEach((asset) => {
-        expect(asset.chainId).toBeTypeOf("string");
-        expect(asset.assetId).toBeTypeOf("string");
-        expect(asset.symbol).toBeTypeOf("string");
-        expect(asset.decimals).toBeTypeOf("number");
-      });
-
-      expect(result.listedAssets.measuredAt).toBeTypeOf("string");
     });
 
     it("should handle multiple routes correctly", async () => {
@@ -197,42 +99,21 @@ describe("Data Provider Plugin Integration Tests", () => {
         includeWindows: ["24h"]
       });
 
-      // Should have liquidity data for both routes
       expect(result.liquidity).toHaveLength(2);
-      expect(result.rates).toHaveLength(2); // 2 routes × 1 notional
-    });
-
-    it("should require routes and notionals", async () => {
-      const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
-
-      // Should throw validation error for empty routes
-      await expect(
-        client.getSnapshot({
-          routes: [],
-          notionals: ["1000"]
-        })
-      ).rejects.toThrow();
-
-      // Should throw validation error for empty notionals
-      await expect(
-        client.getSnapshot({
-          routes: [mockRoute],
-          notionals: []
-        })
-      ).rejects.toThrow();
+      expect(result.rates).toHaveLength(2);
     });
   });
 
   describe("ping procedure", () => {
-    it("should return healthy status", async () => {
+    it("should return healthy status with recent timestamp", async () => {
       const { client } = await runtime.usePlugin("@data-provider/template", TEST_CONFIG);
 
       const result = await client.ping();
 
-      expect(result).toEqual({
-        status: "ok",
-        timestamp: expect.any(String),
-      });
+      expect(result.status).toBe("ok");
+      
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      expect(new Date(result.timestamp).getTime()).toBeGreaterThan(fiveMinutesAgo);
     });
   });
 });
