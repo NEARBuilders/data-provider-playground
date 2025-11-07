@@ -101,28 +101,31 @@ export class DataProviderService {
    * Main entry point — builds the full ProviderSnapshot for NEAR dashboard.
    */
  getSnapshot(params: {
-  routes: Array<{ source: AssetType; destination: AssetType }>;
-  notionals: string[];
+  routes?: Array<{ source: AssetType; destination: AssetType }>;
+  notionals?: string[];
   includeWindows?: Array<"24h" | "7d" | "30d">;
 }) {
-  return Effect.tryPromise({
-    try: async () => {
-      console.log("[LiFiService] Building snapshot...");
+    return Effect.tryPromise({
+      try: async () => {
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
 
-      const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-        this.getVolumes(params.includeWindows || ["24h", "7d", "30d"]),
-        this.getRates(params.routes, params.notionals),
-        this.getLiquidityDepth(params.routes),
-        this.getListedAssets()
-      ]);
+        console.log("[LiFiService] Building snapshot...");
 
-      console.log("✅ [getSnapshot] Rates fetched:", rates.length);
-      console.log("✅ [getSnapshot] Snapshot ready.");
+        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+          this.getVolumes(params.includeWindows || ["24h", "7d", "30d"]),
+          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+          hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
+          this.getListedAssets()
+        ]);
 
-      return { volumes, rates, liquidity, listedAssets };
-    },
-    catch: (error: unknown) => new Error(`Failed to fetch snapshot: ${String(error)}`)
-  });
+        console.log("✅ [getSnapshot] Rates fetched:", rates.length);
+        console.log("✅ [getSnapshot] Snapshot ready.");
+
+        return { volumes, rates, liquidity, listedAssets };
+      },
+      catch: (error: unknown) => new Error(`Failed to fetch snapshot: ${String(error)}`)
+    });
 }
 
   /**
@@ -563,4 +566,3 @@ private async getListedAssets(): Promise<ListedAssetsType> {
     });
   }
 }
-

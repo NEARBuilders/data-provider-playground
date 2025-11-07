@@ -1,5 +1,5 @@
 {
-  "name": "@layerzero/data-provider",
+  "name": "@data-provider/layerzero-0xjesus",
   "version": "1.0.0",
   "description": "LayerZero (Stargate) Protocol data provider plugin for NEAR Intents bounty",
 	"main": "./dist/index.js",

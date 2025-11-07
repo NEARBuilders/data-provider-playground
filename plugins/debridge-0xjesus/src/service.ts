@@ -177,26 +177,29 @@ export class DataProviderService {
   }
 
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[deBridge] Fetching snapshot for ${params.routes.length} routes`);
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        console.log(`[deBridge] Fetching snapshot for ${params.routes?.length || 0} routes`);
 
         const volumes = await this.getVolumes(params.includeWindows || ["24h"]).catch((error) => {
           this.raiseStepError("getVolumes", error);
         });
-        const rates = await this.getRates(params.routes, params.notionals).catch((error) => {
+        const rates = hasRoutes && hasNotionals ? await this.getRates(params.routes!, params.notionals!).catch((error) => {
           this.raiseStepError("getRates", error);
-        });
-        const liquidity = await this.getLiquidityDepth(params.routes).catch((error) => {
+        }) : [];
+        const liquidity = hasRoutes ? await this.getLiquidityDepth(params.routes!).catch((error) => {
           this.raiseStepError("getLiquidityDepth", error);
-        });
-        const listedAssets = await this.getListedAssets(params.routes).catch((error) => {
+        }) : [];
+        const listedAssets = hasRoutes ? await this.getListedAssets(params.routes!).catch((error) => {
           this.raiseStepError("getListedAssets", error);
-        });
+        }) : { assets: [], measuredAt: new Date().toISOString() };
 
         return {
           volumes,

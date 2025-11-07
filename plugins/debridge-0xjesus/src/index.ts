@@ -14,8 +14,6 @@ import { DataProviderService } from "./service";
  * 
  */
 export default createPlugin({
-  id: "@every-plugin/template",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://dln.debridge.finance/v1.0"),
     defillamaBaseUrl: z.string().url().default("https://bridges.llama.fi"),

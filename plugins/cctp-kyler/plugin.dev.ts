@@ -19,17 +19,52 @@ export const sampleRoute = {
   }
 };
 
+export const testRoutes = [
+  {
+    source: {
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0c3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "137",
+      assetId: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  },
+  {
+    source: {
+      chainId: "42161",
+      assetId: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0c3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  }
+];
+
+export const testNotionals = ["1000000", "10000000"];
+
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE
   port: 3014,
   config: {
     // Update these variables to what's required for your plugin
     variables: {
-      baseUrl: "https://api.example.com",
-      timeout: 10000
+      timeout: 10000,
+      maxRetries: 3,
+      requestsPerSecond: 5,
+      subgraphBaseUrl: "https://gateway.thegraph.com/api",
     },
     secrets: {
-      apiKey: process.env.PLUGIN_API_KEY || "dev-key-12345"
+      subgraphApiKey: ""
     }
   } satisfies PluginConfigInput<typeof Plugin>
 }

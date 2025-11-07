@@ -15,8 +15,6 @@ import { optional } from "zod";
  * 
  */
 export default createPlugin({
-  id: "@misbah/lifi",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://li.quest/v1"),
     timeout: z.number().min(1000).max(60000).default(10000),

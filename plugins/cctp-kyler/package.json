@@ -1,5 +1,5 @@
 {
-  "name": "@mrsufferer/cctp",
+  "name": "@data-provider/cctp-kyler",
   "version": "0.0.1",
   "description": "Circle CCTP data provider plugin for every-plugin framework",
 	"main": "./dist/index.js",

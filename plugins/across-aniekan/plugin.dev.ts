@@ -19,17 +19,51 @@ export const sampleRoute = {
   }
 };
 
+export const testRoutes = [
+  {
+    source: {
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "10",
+      assetId: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  },
+  {
+    source: {
+      chainId: "1",
+      assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "137",
+      assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  }
+];
+
+export const testNotionals = ["1000000", "10000000"];
+
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE
   port: 3014,
   config: {
     // Update these variables to what's required for your plugin
     variables: {
-      baseUrl: "https://api.example.com",
-      timeout: 10000
+      baseUrl: "https://across.to/api",
+      timeout: 30000,
+      rateLimitPerSecond: 10,
     },
     secrets: {
-      apiKey: process.env.PLUGIN_API_KEY || "dev-key-12345"
+      apiKey: ""
     }
   } satisfies PluginConfigInput<typeof Plugin>
 }

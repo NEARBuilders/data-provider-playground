@@ -17,8 +17,6 @@ import { CCTPService } from "./service";
  * Note: CCTP public APIs require NO authentication
  */
 export default createPlugin({
-  id: "@nearbuilders/cctp",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://iris-api.circle.com"),
     timeout: z.number().min(1000).max(60000).default(10000),

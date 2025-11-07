@@ -17,8 +17,6 @@ import { EnvSchema } from "./env";
  * Data Sources: Official APIs (no on-chain simulation)
  */
 export default createPlugin({
-  id: "@every-plugin/layerzero",
-
   variables: z.object({
     LZ_SCAN_BASE_URL: z.string().url().default("https://scan.layerzero-api.com/v1"),
     STARGATE_BASE_URL: z.string().url().default("https://stargate.finance/api/v1"),

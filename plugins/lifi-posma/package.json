@@ -1,5 +1,5 @@
 {
-  "name": "@lifi/adapter",
+  "name": "@data-provider/lifi-posma",
   "version": "0.0.2",
   "description": "Li.Fi bridge data adapter for NEAR Intents",
 	"main": "./dist/index.js",

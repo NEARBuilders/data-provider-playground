@@ -1,5 +1,5 @@
 {
-  "name": "@near-intents/debridge-data-provider",
+  "name": "@data-provider/debridge-wali",
   "version": "1.0.0",
   "description": "deBridge DLN data provider plugin for NEAR Intents dashboard",
 	"main": "./dist/index.js",

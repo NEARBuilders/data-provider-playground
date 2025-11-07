@@ -177,18 +177,21 @@ export class DataProviderService {
   }
 
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
         const { routes, notionals, includeWindows = ["24h"] } = params;
         await this.ensureMetadataLoaded();
         const [volumes, rates, liquidity, listedAssets] = await Promise.all([
           this.getVolumes(includeWindows),
-          this.getRates(routes, notionals),
-          this.getLiquidity(routes),
+          hasRoutes && hasNotionals ? this.getRates(routes!, notionals!) : Promise.resolve([]),
+          hasRoutes ? this.getLiquidity(routes!) : Promise.resolve([]),
           this.getListedAssets(),
         ]);
         return { volumes, rates, liquidity, listedAssets } satisfies ProviderSnapshotType;

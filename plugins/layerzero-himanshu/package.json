@@ -1,5 +1,5 @@
 {
-  "name": "@every-plugin/layerzero",
+  "name": "@data-provider/layerzero-himanshu",
   "version": "1.0.0",
   "description": "LayerZero/Stargate data provider plugin for cross-chain bridge metrics",
 	"main": "./dist/index.js",

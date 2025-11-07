@@ -17,8 +17,6 @@ import { DataProviderService } from "./service";
  * Uses Stargate Finance REST API (https://stargate.finance/api/v1)
  */
 export default createPlugin({
-  id: "@layerzero/data-provider",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://stargate.finance/api/v1"),
     defillamaBaseUrl: z.string().url().default("https://api.llama.fi"),

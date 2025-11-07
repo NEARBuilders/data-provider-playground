@@ -15,8 +15,6 @@ import { HttpUtils } from "./utils/http";
  * 
  */
 export default createPlugin({
-  id: "@Psianturi/lifi",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://li.quest/v1"),
     // Rate limiter settings (make per-provider limits configurable via ENV)

@@ -1,5 +1,5 @@
 {
-  "name": "@across/data-provider",
+  "name": "@data-provider/across-0xjesus",
   "version": "1.0.0",
   "description": "Across Protocol data provider plugin for NEAR Intents bounty - Production-ready bridge statistics collection",
 	"main": "./dist/index.js",

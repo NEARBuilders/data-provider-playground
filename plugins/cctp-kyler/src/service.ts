@@ -53,16 +53,19 @@ export class CCTPService {
   }
 
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
         const [volumes, rates, liquidity, listedAssets] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
+          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+          hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
           this.getListedAssets()
         ]);
 

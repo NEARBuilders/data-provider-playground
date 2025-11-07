@@ -93,19 +93,22 @@ export class DataProviderService {
   }
 
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[AcrossDataProvider] Fetching snapshot for ${params.routes.length} routes`);
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        console.log(`[AcrossDataProvider] Fetching snapshot for ${params.routes?.length || 0} routes`);
 
         // Fetch all data in parallel
         const [volumes, rates, liquidity, listedAssets] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes, params.notionals),
+          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+          hasRoutes && hasNotionals ? this.getLiquidityDepth(params.routes!, params.notionals!) : Promise.resolve([]),
           this.getListedAssets()
         ]);
 

@@ -7,8 +7,6 @@ import { DataProviderService } from "./service";
 
 
 export default createPlugin({
-  id: "@near-intents/across-plugin",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://across.to/api"),
     timeout: z.number().min(1000).max(60000).default(30000),

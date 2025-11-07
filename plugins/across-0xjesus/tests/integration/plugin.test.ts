@@ -1,5 +1,5 @@
 import Plugin from "@/index";
-import pluginDevConfig, { sampleRoute } from "../../plugin.dev";
+import pluginDevConfig, { sampleRoute, testRoutes, testNotionals } from "../../plugin.dev";
 import type { PluginRegistry } from "every-plugin";
 import { createLocalPluginRuntime } from "every-plugin/testing";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ const TEST_REGISTRY: PluginRegistry = {
   [TEST_PLUGIN_ID]: {
     remoteUrl: "http://localhost:3000/remoteEntry.js",
     version: "1.0.0",
-    description: "Data provider template for integration testing",
+    description: "Across Protocol data provider plugin for integration testing",
   },
 };
 
@@ -38,15 +38,9 @@ describe("Data Provider Plugin Integration Tests", () => {
     it("should handle multiple routes correctly", async () => {
       const { client } = await runtime.usePlugin(TEST_PLUGIN_ID, TEST_CONFIG);
 
-      // Create reverse route by swapping source and destination
-      const secondRoute = {
-        source: sampleRoute.destination,
-        destination: sampleRoute.source,
-      };
-
       const result = await client.getSnapshot({
-        routes: [sampleRoute, secondRoute],
-        notionals: ["1000"],
+        routes: testRoutes,
+        notionals: testNotionals,
         includeWindows: ["24h"]
       });
 
@@ -55,8 +49,10 @@ describe("Data Provider Plugin Integration Tests", () => {
       }
 
       expect(result.liquidity.length, "Should return liquidity for each route").toBe(2);
-      expect(result.rates.length, "Should return rates for each route").toBe(2);
+      expect(result.rates.length, "Should return rates for each route").toBe(4); // 2 routes × 2 notionals
     });
+
+
   });
 
   describe("ping procedure", () => {

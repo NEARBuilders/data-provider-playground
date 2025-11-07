@@ -19,8 +19,6 @@ import { HttpUtils } from "./utils/http";
  * - Comprehensive error handling
  */
 export default createPlugin({
-  id: "@near-intents/debridge-data-provider",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://dln.debridge.finance/v1.0"),
     timeout: z.number().min(1000).max(60000).default(30000),

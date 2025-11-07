@@ -17,8 +17,6 @@ import { DataProviderService } from "./service";
  * No API key required - Across API is public.
  */
 export default createPlugin({
-  id: "@across/data-provider",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://app.across.to/api"),
     coingeckoBaseUrl: z.string().url().default("https://api.coingecko.com/api/v3"),

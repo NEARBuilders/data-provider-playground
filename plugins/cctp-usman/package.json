@@ -1,5 +1,5 @@
 {
-  "name": "@nearbuilders/cctp-plugin",
+  "name": "@data-provider/cctp-usman",
   "version": "1.0.0",
   "description": "Circle CCTP data provider plugin for NEAR Intents",
 	"main": "./dist/index.js",

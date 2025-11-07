@@ -135,20 +135,23 @@ export class DataProviderService {
    * Get complete snapshot of provider data for given routes and notionals.
    */
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[LayerZero] Fetching snapshot for ${params.routes.length} routes`);
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        console.log(`[LayerZero] Fetching snapshot for ${params.routes?.length || 0} routes`);
 
         // Parallel API calls with graceful degradation using Promise.allSettled
         // This allows working components to return data even if others fail (e.g., Module Federation bug)
         const results = await Promise.allSettled([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
+          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+          hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
           this.getListedAssets()
         ]);
 

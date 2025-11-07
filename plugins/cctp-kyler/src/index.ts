@@ -6,8 +6,6 @@ import { contract } from "./contract";
 import { CCTPService } from "./service";
 
 export default createPlugin({
-  id: "@MrSufferer/cctp",
-
   variables: z.object({
     timeout: z.number().min(1000).max(60000).default(10000),
     maxRetries: z.number().min(0).max(10).default(3),

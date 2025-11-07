@@ -12,8 +12,6 @@ import { DataProviderService } from "./service";
  * Li.Fi aggregates multiple bridges (Hop, Connext, Across, etc.) and DEXes.
  */
 export default createPlugin({
-  id: "@every-plugin/template",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://li.quest/v1"),
     defillamaBaseUrl: z.string().url().default("https://bridges.llama.fi"),

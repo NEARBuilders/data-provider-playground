@@ -1,5 +1,5 @@
 {
-  "name": "@misbah/lifi",
+  "name": "@data-provider/lifi-misbah",
   "version": "0.0.1",
   "description": "Template plugin for every-plugin framework",
 	"main": "./dist/index.js",
