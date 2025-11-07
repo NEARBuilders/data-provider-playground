@@ -1,0 +1,139 @@
+bun test v1.3.1 (89fa0f34)
+
+src/__tests__/integration/plugin.test.ts:
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Fetching snapshot for 2 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[MOCK] registerRemote called for @every-plugin/template
+[MOCK] registerRemote succeeded for @every-plugin/template
+[MOCK] loadRemoteConstructor called for @every-plugin/template
+[MOCK] loadRemoteConstructor succeeded for @every-plugin/template
+[Axelar] Loaded 29 chains from official config
+[Axelar] Ping - service ready
+[Axelar] Ping - service ready
+
+src/__tests__/unit/service.test.ts:
+[Axelar] Loaded 29 chains from official config
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Fetching snapshot for 1 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Fetching snapshot for 2 routes
+[Axelar] Using estimated volume based on typical Axelar throughput. For production, use Dune Analytics.
+[Axelar] Using estimated fees. For production, integrate AxelarJS SDK for real-time quotes.
+[Axelar] Using estimated liquidity depth. For production, query on-chain contract balances.
+[Axelar] Using static asset list based on Axelar documentation. For production, query Gateway contracts.
+[Axelar] Returning 25 common Axelar-supported assets
+[Axelar] Ping - service ready
+
+ 15 pass
+ 0 fail
+ 278 expect() calls
+Ran 15 tests across 2 files. [250.00ms]
