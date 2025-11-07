@@ -14,11 +14,11 @@ Template for building single-provider bridge data adapters for the NEAR Intents 
    ```
 
 3. **Update configuration** in `plugin.dev.ts`:
-   - Set your plugin's base URL and timeout
+   - Set your plugin's secrets and variables
    - Update `sampleRoute` with a real route for your provider
-   - Configure API key environment variable
+   - Configure any secrets in your .env
 
-4. **Replace mock implementation** in `src/service.ts`:
+4. **Implement provider** in `src/service.ts`:
    - Replace `getRates()`, `getVolumes()`, `getLiquidityDepth()`, `getListedAssets()` with real API calls
    - Implement decimal normalization for `effectiveRate` calculations
    - Add proper error handling for rate limits and timeouts
@@ -43,11 +43,13 @@ Tests validate your implementation with **clear failure messages** when incomple
 ### Expected Test Behavior
 
 **With Empty Template Implementation:**
+
 - ❌ 3/4 unit tests fail with actionable error messages
 - ❌ 1/2 integration tests fail
 - Each failure tells you which method to implement
 
 **With Working Implementation:**
+
 - ✅ All tests pass
 - 📊 Console displays data quality metrics for easy review
 
@@ -55,7 +57,7 @@ Tests validate your implementation with **clear failure messages** when incomple
 
 When tests pass with a real implementation, you'll see:
 
-```
+```bash
 📊 Volume Data & Listed Assets
    ✓ Unique Assets: 12
    ✓ Volume (24h): $1,234,567
@@ -88,17 +90,6 @@ This makes it easy to review multiple plugin implementations quickly.
 **"Expected liquidity to be present"**
 → Implement `getLiquidityDepth()` to measure max amounts at 50bps and 100bps slippage
 
-## Environment Variables
-
-```bash
-# Required
-DATA_PROVIDER_API_KEY=your_provider_api_key
-
-# Optional
-DATA_PROVIDER_BASE_URL=https://api.yourprovider.com
-DATA_PROVIDER_TIMEOUT=10000
-```
-
 ## Contract
 
 Single endpoint `getSnapshot` that takes routes, notional amounts, and time windows, returning:
@@ -112,7 +103,6 @@ Single endpoint `getSnapshot` that takes routes, notional amounts, and time wind
 
 - **One provider per plugin** - Implement only the provider you chose
 - **No background processing** - Simple request/response pattern
-- **Template injection** - Use `{{SECRET_NAME}}` for secrets in runtime config
 - **Error resilience** - Implement retries and rate limiting in your service methods
 
 ## License

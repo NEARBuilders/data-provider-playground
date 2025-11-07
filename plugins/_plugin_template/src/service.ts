@@ -1,21 +1,12 @@
-import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
-
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-export type AssetType = z.infer<typeof Asset>;
-export type RateType = z.infer<typeof Rate>;
-export type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-export type VolumeWindowType = z.infer<typeof VolumeWindow>;
-export type ListedAssetsType = z.infer<typeof ListedAssets>;
-export type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  RateType,
+  TimeWindow,
+  VolumeWindowType
+} from "@data-provider/shared-contract";
+import { Effect } from "every-plugin/effect";
 
 /**
  * Data Provider Service - Collects cross-chain bridge metrics from a single provider.
@@ -36,7 +27,7 @@ export class DataProviderService {
   getSnapshot(params: {
     routes?: Array<{ source: AssetType; destination: AssetType }>;
     notionals?: string[];
-    includeWindows?: Array<"24h" | "7d" | "30d">;
+    includeWindows?: TimeWindow[];
   }) {
     return Effect.tryPromise({
       try: async () => {
@@ -72,7 +63,7 @@ export class DataProviderService {
    * Fetch volume metrics for specified time windows.
    * TODO: Implement provider's volume API endpoint
    */
-  private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
+  private async getVolumes(windows: TimeWindow[]): Promise<VolumeWindowType[]> {
     return [];
   }
 

@@ -1,5 +1,5 @@
 import Plugin from "@/index";
-import type { ProviderSnapshotType } from "@/service";
+import type { ProviderSnapshotType } from "@data-provider/shared-contract";
 import type { PluginRegistry } from "every-plugin";
 import { createLocalPluginRuntime } from "every-plugin/testing";
 import { describe, expect, it } from "vitest";
