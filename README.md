@@ -12,54 +12,26 @@ Requirements: Node 20+ or **Bun** (recommended, faster).
 # Install dependencies
 bun install
 
-# Run tests (see Testing section for `bun test` vs `bun run test` differences)
-bun run test                          # Vitest (recommended for CI/CD) ✅
-# OR
-bun test                              # Bun native test runner (for development)
-
 # Run lifi-adapter tests only
-cd packages/lifi-adapter && bun run test     # CI/CD / Production
-cd packages/lifi-adapter && bun test          # Development
+cd plugins/lifi-adapter && bun run test     # CI/CD / Production
+cd plugins/lifi-adapter && bun test          # Development
 
 # Build adapter
-cd packages/lifi-adapter && bun run build
+cd plugins/lifi-adapter && bun run build
 
 # Type check
-cd packages/lifi-adapter && bun run type-check
+cd plugins/lifi-adapter && bun run type-check
 
 # Development server (Rspack, http://localhost:3014)
-cd packages/lifi-adapter && bun dev
+cd plugins/lifi-adapter && bun dev
 
 # Run demo (mock mode)
-cd packages/lifi-adapter && bun run demo:mock
-
-```
-
-### npm workflow (alternative)
-
-```bash
-# Install dependencies
-npm install
-
-# Run tests (all tests)
-npm test
-
-# Run lifi-adapter tests only
-cd packages/lifi-adapter && npm test
-
-# Build adapter
-cd packages/lifi-adapter && npm run build
-
-# Type check
-cd packages/lifi-adapter && npm run type-check
-
-# Development server (Rspack)
-cd packages/lifi-adapter && npm run dev
+cd plugins/lifi-adapter && bun run demo:mock
 ```
 
 ## Configuration
 
-- Copy `packages/lifi-adapter/.env.example` to `.env` (same folder) and adjust as needed.
+- Copy `plugins/lifi-adapter/.env.example` to `.env` (same folder) and adjust as needed.
 - **Variables**:
   - `LIFI_BASE_URL`: Li.Fi API base URL (default: `https://li.quest/v1`)
   - `LIFI_MAX_CONCURRENT`: Rate limiter concurrency (default: `5`)
@@ -91,9 +63,9 @@ cd packages/lifi-adapter && npm run dev
 
 ## Compliance Checklist
 
-- **Objective**: Implements the Li.Fi competitor adapter using the `every-plugin` template (`packages/lifi-adapter/src/index.ts`) and captures rates, liquidity depth, assets, and empty volume placeholders.
+- **Objective**: Implements the Li.Fi competitor adapter using the `every-plugin` template (`plugins/lifi-adapter/src/index.ts`) and captures rates, liquidity depth, assets, and volume metrics.
 - **Requirements**: Off-chain Li.Fi `/quote` and `/tokens` APIs only; ENV-driven variables/secrets configure base URL, timeout, and rate limits; resilience handled by `HttpUtils` (retries, backoff, limiter) and deterministic fallbacks; README documents setup, env vars, and data behavior; Vitest suite extended and passing.
-- **Contract Specification**: `packages/lifi-adapter/src/contract.ts` mirrors the template contract without field shape changes, normalizes decimals for `effectiveRate`, and retains smallest-unit strings.
+- **Contract Specification**: `plugins/lifi-adapter/src/contract.ts` mirrors the template contract without field shape changes, normalizes decimals for `effectiveRate`, and retains smallest-unit strings.
 - **Contract Rules**: Repo ships a single provider (`@lifi/adapter`), keeps all field names intact, computes normalized rates, and liquidity thresholds cover ≤0.5% and ≤1.0% slippage.
 - **Template Repository**: Derived from `NEARBuilders/data-provider-playground`, retaining the `_plugin_template` reference and adapting only the Li.Fi service-specific pieces.
 - **Evaluation Readiness**: Strong type-safety via Zod schemas, reliability under rate limits through limiter + fallbacks, and comprehensive test/demo coverage to evidence correctness.
@@ -107,13 +79,15 @@ There are **two test runners** with different purposes:
 
 ```bash
 # For CI/CD and production validation ✅ RECOMMENDED
+cd plugins/lifi-adapter
 bun run test
 
 # For development and quick local testing
+cd plugins/lifi-adapter
 bun test
 
 # In lifi-adapter folder:
-cd packages/lifi-adapter
+cd plugins/lifi-adapter
 bun run test:unit          # Unit tests only (with mocks)
 bun run test:integration   # Integration tests only (with mocks)
 bun run test:watch         # Watch mode
@@ -124,7 +98,7 @@ bun run test:watch         # Watch mode
 
 - Date: 2025-11-06
 - Test runner: Vitest v3.2.4 (via `bun run test`)
-- Location: `packages/lifi-adapter`
+- Location: `plugins/lifi-adapter`
 - Test files executed: 4
 - Total tests: 16 passed, 1 skipped
 - Status: **100% passing** 
@@ -134,12 +108,12 @@ bun run test:watch         # Watch mode
 
 ```
 lifi-adapter-for-near/
-├── packages/
+├── plugins/
 │   ├── lifi-adapter/               # Main Li.Fi adapter implementation
 │   │   ├── src/
-│   │   │   ├── __tests__/          # Test suite (unit + integration)
+│   │   │   ├── tests/              # Test suite (unit + integration)
 │   │   │   │   ├── integration/    # Plugin and server integration tests
-│   │   │   │   ├── mocks/          # MSW mock handlers and server
+│   │   │   │   ├── mocks/          # Mock handlers and server
 │   │   │   │   ├── unit/           # Unit tests for service and utils
 │   │   │   │   └── setup.ts        # Test setup configuration
 │   │   │   ├── utils/              # Utility modules
@@ -157,6 +131,14 @@ lifi-adapter-for-near/
 │   │   ├── .env.example            # Environment variables template
 │   │   ├── DEMO.md                 # Demo usage instructions
 │   │   └── package.json            # Dependencies and scripts
+│   ├── _plugin_template/           # Original template (reference)
+│       ├── src/
+│       │   ├── tests/              # Template test structure
+│       │   ├── contract.ts         # Template contract
+│       │   ├── index.ts            # Template entry
+│       │   └── service.ts          # Template service
+│       └── README.md               # Template documentation
+├── packages/
 │   ├── api/                        # API runtime for plugin system
 │   │   ├── src/
 │   │   │   ├── routers/            # API route definitions
@@ -164,21 +146,15 @@ lifi-adapter-for-near/
 │   │   │   ├── index.ts            # API entry point
 │   │   │   └── runtime.ts          # Runtime configuration
 │   │   └── package.json
-│   └── _plugin_template/           # Original template (reference)
-│       ├── src/
-│       │   ├── __tests__/          # Template test structure
-│       │   ├── contract.ts         # Template contract
-│       │   ├── index.ts            # Template entry
-│       │   └── service.ts          # Template service
-│       └── README.md               # Template documentation
 ├── apps/
-│   └── web/                        # Web UI for plugin testing
-│       ├── src/
-│       │   ├── app/                # Next.js app router
-│       │   ├── components/         # React components
-│       │   ├── lib/                # Utility libraries
-│       │   └── utils/              # Helper functions
-│       └── package.json
+│   ├── web/                        # Web UI for plugin testing
+│   │   ├── src/
+│   │   │   ├── app/                # Next.js app router
+│   │   │   ├── components/         # React components
+│   │   │   ├── lib/                # Utility libraries
+│   │   │   └── utils/              # Helper functions
+│   │   └── package.json
+│   └── server/                     # Server application
 ├── types/                          # TypeScript type definitions
 ├── .gitignore                      # Git ignore rules
 ├── package.json                    # Root package configuration

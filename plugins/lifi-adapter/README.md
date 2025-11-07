@@ -80,13 +80,13 @@ getVolumes(windows: ["24h", "7d", "30d"]) {
 | **API Calls (24h)** | 1 call | 2-8 calls (depends on volume) |
 | **API Calls (7d/30d)** | 1 call | 8-15 calls (more data) |
 | **Rate Limit Impact** | ✅ Low (1 call) | ⚠️ Higher (multiple calls) |
-| **Real Data (npm test)** | ✅ PASS | ✅ PASS (with mocks) |
+| **Real Data (bun run test)** | ✅ PASS | ✅ PASS (with mocks) |
 | **Real Data (bun test)** | ✅ PASS (1 call safe) | ⚠️ May FAIL (rate limited) |
 | **Production Data Quality** | ❌ Incomplete (~5% data) | ✅ Complete (100% data) |
 
 **Implementation Strategy**:
 - ✅ **Current**: Uses V2 endpoint for accurate complete data
-- ✅ **Testing**: Mocked responses prevent rate limiting in `npm run test`
+- ✅ **Testing**: Mocked responses prevent rate limiting in `bun run test`
 - ℹ️ **Note**: `bun test` hits real API and may fail when v2 pagination exhausts rate limit (expected behavior documented in README)
 
 **Alternative Endpoint - Not Suitable**:
