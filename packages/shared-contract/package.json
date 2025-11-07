@@ -18,7 +18,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "every-plugin": "0.4.9"
+    "every-plugin": "0.4.10"
   },
   "devDependencies": {
     "@types/bun": "latest",

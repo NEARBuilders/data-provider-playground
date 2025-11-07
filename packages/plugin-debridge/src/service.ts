@@ -1,30 +1,19 @@
 import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
 import Decimal from "decimal.js";
-
-// Import types from contract
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  RateType,
+  TimeWindow,
+  VolumeWindowType
+} from "@data-provider/shared-contract";
 
 // Import utilities
 import { DecimalUtils } from "./utils/decimal";
 import { HttpUtils } from "./utils/http";
 import { TTLCache, RequestDeduplicator, CircuitBreaker } from "./utils/cache";
 import { Logger, PerformanceTimer } from "./utils/logger";
-
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
 
 // deBridge DLN API response types
 interface DeBridgeOrder {
@@ -176,10 +165,10 @@ export class DataProviderService {
     // deBridge DLN API endpoints
     this.dlnApiBase = baseUrl.includes('dln.debridge.finance') ? baseUrl : 'https://dln.debridge.finance/v1.0';
     this.statsApiBase = 'https://stats-api.dln.trade/api';
-    
+
     // Initialize structured logger
     this.logger = new Logger('deBridge:Service', (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'info') as any || 'info');
-    
+
     this.logger.info('DataProviderService initialized', {
       dlnApiBase: this.dlnApiBase,
       statsApiBase: this.statsApiBase,
@@ -197,32 +186,39 @@ export class DataProviderService {
    * - Supported assets across all chains
    */
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
-    includeWindows?: Array<"24h" | "7d" | "30d">;
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
+    includeWindows?: TimeWindow[];
   }) {
-    if (!params?.routes?.length || !params?.notionals?.length) {
-      return Effect.fail(new Error('Routes and notionals are required'));
-    }
-
     return Effect.tryPromise({
       try: async () => {
+
         const timer = new PerformanceTimer();
         this.logger.info('Snapshot fetch started', {
-          routeCount: params.routes.length,
-          notionalCount: params.notionals.length,
+          routeCount: params.routes?.length,
+          notionalCount: params.notionals?.length,
           windows: params.includeWindows,
         });
 
         try {
           // Fetch all metrics in parallel for performance
           timer.mark('fetchStart');
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-          this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
-          this.getListedAssets()
-        ]);
+          const hasRoutes = params.routes && params.routes.length > 0;
+          const hasNotionals = params.notionals && params.notionals.length > 0;
+
+          const [volumes, listedAssets] = await Promise.all([
+            this.getVolumes(params.includeWindows || ["24h"]),
+            this.getListedAssets()
+          ]);
+
+          const rates = hasRoutes && hasNotionals
+            ? await this.getRates(params.routes!, params.notionals!)
+            : [];
+
+          const liquidity = hasRoutes
+            ? await this.getLiquidityDepth(params.routes!)
+            : [];
+
           timer.mark('fetchEnd');
 
           this.logger.info('Snapshot fetch completed', {
@@ -233,12 +229,12 @@ export class DataProviderService {
             assetCount: listedAssets.assets.length,
           });
 
-        return {
-          volumes,
-          rates,
-          liquidity,
-          listedAssets,
-        } satisfies ProviderSnapshotType;
+          return {
+            volumes,
+            listedAssets,
+            ...(rates.length > 0 && { rates }),
+            ...(liquidity.length > 0 && { liquidity }),
+          };
         } catch (error) {
           this.logger.error('Snapshot fetch failed', {
             error: error instanceof Error ? error.message : String(error),
@@ -251,7 +247,6 @@ export class DataProviderService {
         new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)
     });
   }
-
   /**
    * Fetch volume metrics from deBridge DLN Stats API
    * Uses POST /api/Orders/filteredList with pagination support
@@ -264,7 +259,7 @@ export class DataProviderService {
    */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
     const cacheKey = windows.sort().join(',');
-    
+
     // Check cache first
     const cached = this.volumeCache.get(cacheKey);
     if (cached) {
@@ -290,7 +285,7 @@ export class DataProviderService {
 
           // Query deBridge Stats API with pagination
           const url = `${this.statsApiBase}/Orders/filteredList`;
-          
+
           try {
             let allOrders: DeBridgeOrder[] = [];
             let page = 0;
@@ -309,7 +304,7 @@ export class DataProviderService {
               const data = await this.statsCircuit.execute(() =>
                 this.deduplicator.deduplicate(
                   `volume-${window}-${page}`,
-                  () => HttpUtils.fetchWithRetry<{orders?: DeBridgeOrder[]}>(
+                  () => HttpUtils.fetchWithRetry<{ orders?: DeBridgeOrder[] }>(
                     url,
                     {
                       method: 'POST',
@@ -371,7 +366,7 @@ export class DataProviderService {
               window,
               error: apiError instanceof Error ? apiError.message : String(apiError),
             });
-            
+
             // Fallback to conservative estimate
             const estimatedVolumes = {
               "24h": 3000000,    // $3M daily
@@ -389,7 +384,7 @@ export class DataProviderService {
             window,
             error: error instanceof Error ? error.message : String(error),
           });
-          
+
           volumes.push({
             window,
             volumeUsd: 0,
@@ -400,19 +395,19 @@ export class DataProviderService {
 
       // Cache the result
       this.volumeCache.set(cacheKey, volumes);
-      
+
       return volumes;
     } catch (error) {
       this.logger.error('Volume fetch failed completely', {
         error: error instanceof Error ? error.message : String(error),
       });
-      
+
       // Return empty volumes array on complete failure
       return windows.map(window => ({
-      window,
+        window,
         volumeUsd: 0,
-      measuredAt: new Date().toISOString(),
-    }));
+        measuredAt: new Date().toISOString(),
+      }));
     }
   }
 
@@ -456,7 +451,7 @@ export class DataProviderService {
         try {
           // Generate cache key for this quote
           const cacheKey = `${route.source.chainId}-${route.source.assetId}-${route.destination.chainId}-${route.destination.assetId}-${notional}`;
-          
+
           // Check cache first
           const cachedQuote = this.quoteCache.get(cacheKey);
           let quote: DeBridgeQuote;
@@ -669,8 +664,8 @@ export class DataProviderService {
           thresholds: [
             { maxAmountIn: DecimalUtils.denormalizeAmount('50000', route.source.decimals), slippageBps: 50 },
             { maxAmountIn: DecimalUtils.denormalizeAmount('100000', route.source.decimals), slippageBps: 100 },
-      ],
-      measuredAt: new Date().toISOString(),
+          ],
+          measuredAt: new Date().toISOString(),
         });
       }
     }
@@ -716,7 +711,7 @@ export class DataProviderService {
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     const cacheKey = 'listed-assets';
-    
+
     // Check cache first (1 hour TTL)
     const cached = this.assetsCache.get(cacheKey);
     if (cached) {
@@ -729,7 +724,7 @@ export class DataProviderService {
     try {
       // Query deBridge tokens API with circuit breaker + deduplication
       const url = `${this.dlnApiBase}/supported-chains-info`;
-      
+
       const data = await this.dlnCircuit.execute(() =>
         this.deduplicator.deduplicate(
           cacheKey,
@@ -749,7 +744,7 @@ export class DataProviderService {
       }
 
       const assets: AssetType[] = [];
-      
+
       // Flatten tokens from all chains
       for (const chain of data.chains) {
         if (!Array.isArray(chain.tokens)) continue;
@@ -776,7 +771,7 @@ export class DataProviderService {
 
       // Cache the result
       this.assetsCache.set(cacheKey, result);
-      
+
       this.logger.info('Listed assets fetched', { assetCount: result.assets.length });
       return result;
     } catch (error) {
@@ -784,10 +779,10 @@ export class DataProviderService {
         error: error instanceof Error ? error.message : String(error),
       });
 
-    return {
+      return {
         assets: this.getFallbackAssets(),
         measuredAt: new Date().toISOString(),
-    };
+      };
     }
   }
 
