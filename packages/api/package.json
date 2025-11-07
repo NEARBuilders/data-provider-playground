@@ -1,5 +1,5 @@
 {
-  "name": "@plugin-builder/api",
+  "name": "@data-provider/api",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "tsdown": "^0.15.5",
-    "@every-plugin/template": "workspace:*"
+    "@data-provider/template": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -27,8 +27,6 @@
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
     "dotenv": "^17.2.2",
-    "every-plugin": "catalog:",
-    "next": "catalog:",
-    "zod": "catalog:"
+    "every-plugin": "catalog:"
   }
 }

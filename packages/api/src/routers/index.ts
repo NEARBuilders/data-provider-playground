@@ -1,16 +1,15 @@
-import { publicProcedure } from "../index";
-import { dataProviderRouter } from "../runtime";
 import type { RouterClient } from "@orpc/server";
+import { os } from "@orpc/server";
+import { plugins } from "../plugins";
 
-export const appRouter = publicProcedure.router({
-	healthCheck: publicProcedure.handler(() => {
-		return "OK";
-	}),
-	dataProvider: {
-		getSnapshot: dataProviderRouter.getSnapshot,
-		ping: dataProviderRouter.ping,
-	},
-});
+export const router = {
+	health: os
+		.route({ method: "GET", path: "/health" })
+		.handler(() => {
+			return "OK";
+		}),
+	dataProvider: os.prefix('/data-provider').router(plugins.dataProvider.router)
+} as const;
 
-export type AppRouter = typeof appRouter;
-export type AppRouterClient = RouterClient<typeof appRouter>;
+export type AppRouter = typeof router;
+export type AppRouterClient = RouterClient<AppRouter>;
