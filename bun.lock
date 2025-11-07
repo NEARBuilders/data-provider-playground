@@ -103,15 +103,17 @@
         "axios": "^1.7.2",
       },
       "devDependencies": {
+        "@data-provider/shared-contract": "workspace:*",
         "@effect/language-service": "^0.41.1",
         "@module-federation/node": "^2.7.17",
         "@rspack/cli": "^1.5.2",
         "@rspack/core": "^1.5.2",
         "@types/node": "^24.6.0",
         "dotenv": "^17.2.2",
-        "every-plugin": "catalog:",
+        "every-plugin": "0.4.10",
         "msw": "^2.3.0",
         "sirv": "^3.0.2",
+        "vite-tsconfig-paths": "^5.1.4",
         "vitest": "^3.2.4",
         "zephyr-rspack-plugin": "^0.0.59",
       },
@@ -1750,6 +1752,8 @@
 
     "@every-plugin/wormhole/@types/node": ["@types/node@24.10.0", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-qzQZRBqkFsYyaSWXuEHc2WR9c0a0CXwiE5FWUvn7ZM+vdy1uZLfCunD38UzhuB7YN/J11ndbDBcTmOdxJo9Q7A=="],
 
+    "@every-plugin/wormhole/every-plugin": ["every-plugin@0.4.10", "", { "dependencies": { "@better-fetch/fetch": "^1.1.18", "@module-federation/enhanced": "^0.19.1", "@module-federation/node": "^2.7.15", "@module-federation/runtime-core": "^0.19.1", "@orpc/contract": "^1.10.0", "@orpc/experimental-publisher": "^1.10.0", "@orpc/server": "^1.10.0", "effect": "3.18.1", "zod": "4.1.5" }, "peerDependencies": { "@rspack/core": "*", "typescript": "^5.6.0" } }, "sha512-scm+ZETfk5a/m4JSSb1EKZvNOshGIOP52BUr0Bqvsw8jQfB/vwIs5U5KrlmV5zenPguSQjGJOSfpETnDbYhXdg=="],
+
     "@modern-js/node-bundle-require/@swc/helpers": ["@swc/helpers@0.5.17", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A=="],
 
     "@modern-js/utils/@swc/helpers": ["@swc/helpers@0.5.17", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A=="],
@@ -1969,6 +1973,8 @@
     "@data-provider/template/every-plugin/zod": ["zod@4.1.5", "", {}, "sha512-rcUUZqlLJgBC33IT3PNMgsCq6TzLQEG/Ei/KTCU0PedSWRMAXoOUN+4t/0H+Q8bdnLPdqUYnvboJT0bn/229qg=="],
 
     "@every-plugin/wormhole/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
+
+    "@every-plugin/wormhole/every-plugin/zod": ["zod@4.1.5", "", {}, "sha512-rcUUZqlLJgBC33IT3PNMgsCq6TzLQEG/Ei/KTCU0PedSWRMAXoOUN+4t/0H+Q8bdnLPdqUYnvboJT0bn/229qg=="],
 
     "@module-federation/enhanced/@module-federation/runtime-tools/@module-federation/runtime": ["@module-federation/runtime@0.19.1", "", { "dependencies": { "@module-federation/error-codes": "0.19.1", "@module-federation/runtime-core": "0.19.1", "@module-federation/sdk": "0.19.1" } }, "sha512-eSXexdGGPpZnhiWCVfRlVLNWj7gHKp65beC4b8wddTvMBIrxnsdl9ae1ebwcIpbe9gOGDbaXBFtc3r5MH6l6Jg=="],
 

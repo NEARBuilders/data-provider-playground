@@ -1,24 +1,14 @@
-import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
 import axios from "axios";
+import { Effect } from "every-plugin/effect";
 
-// Import types from contract
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  RateType,
+  TimeWindow,
+  VolumeWindowType
+} from "@data-provider/shared-contract";
 
 // Chain ID to Chain Name mapping
 const CHAIN_MAP: Record<number, string> = {
@@ -70,27 +60,36 @@ export class DataProviderService {
    * Get complete snapshot of provider data for given routes and notionals.
    */
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
-    includeWindows?: Array<"24h" | "7d" | "30d">;
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
+    includeWindows?: TimeWindow[];
   }) {
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[WormholeService] Fetching snapshot for ${params.routes.length} routes`);
+        console.log(`[WormholeService] Fetching snapshot for ${params.routes?.length} routes`);
 
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        const [volumes, listedAssets] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
           this.getListedAssets()
         ]);
 
+        const rates = hasRoutes && hasNotionals
+          ? await this.getRates(params.routes!, params.notionals!)
+          : [];
+
+        const liquidity = hasRoutes
+          ? await this.getLiquidityDepth(params.routes!)
+          : [];
+
         return {
           volumes,
-          rates,
-          liquidity,
           listedAssets,
-        } satisfies ProviderSnapshotType;
+          ...(rates.length > 0 && { rates }),
+          ...(liquidity.length > 0 && { liquidity }),
+        };
       },
       catch: (error: unknown) =>
         new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)
