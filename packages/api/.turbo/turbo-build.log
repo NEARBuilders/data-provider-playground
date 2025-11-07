@@ -1,0 +1,20 @@
+
+[0m[2m[35m$[0m [2m[1mtsdown[0m
+[34mℹ[39m tsdown [2mv0.15.12[22m powered by rolldown [2mv1.0.0-beta.45[22m
+[34mℹ[39m Using tsdown config: [4m/Users/ebraem/workspace/bounties/data-providers/data-provider-playground/packages/api/tsdown.config.ts[24m
+[34mℹ[39m entry: [34msrc/context.ts, src/index.ts, src/plugins.ts, src/routers/index.ts[39m
+[34mℹ[39m tsconfig: [34mtsconfig.json[39m
+[34mℹ[39m Build start
+[34mℹ[39m Cleaning 11 files
+[34mℹ[39m [2mdist/[22m[1mindex.js[22m                 [2m0.34 kB[22m [2m│ gzip: 0.23 kB[22m
+[34mℹ[39m [2mdist/[22m[1mcontext.js[22m               [2m0.15 kB[22m [2m│ gzip: 0.14 kB[22m
+[34mℹ[39m [2mdist/[22m[1mrouters/index.js[22m         [2m0.11 kB[22m [2m│ gzip: 0.10 kB[22m
+[34mℹ[39m [2mdist/[22m[1mplugins.js[22m               [2m0.10 kB[22m [2m│ gzip: 0.09 kB[22m
+[34mℹ[39m [2mdist/[22mplugins-DDgIui_O.js.map  [2m1.63 kB[22m [2m│ gzip: 0.77 kB[22m
+[34mℹ[39m [2mdist/[22mplugins-DDgIui_O.js      [2m0.76 kB[22m [2m│ gzip: 0.42 kB[22m
+[34mℹ[39m [2mdist/[22mrouters-BcjVymNP.js.map  [2m0.75 kB[22m [2m│ gzip: 0.43 kB[22m
+[34mℹ[39m [2mdist/[22mindex.js.map             [2m0.46 kB[22m [2m│ gzip: 0.28 kB[22m
+[34mℹ[39m [2mdist/[22mrouters-BcjVymNP.js      [2m0.40 kB[22m [2m│ gzip: 0.28 kB[22m
+[34mℹ[39m [2mdist/[22mcontext.js.map           [2m0.29 kB[22m [2m│ gzip: 0.22 kB[22m
+[34mℹ[39m 10 files, total: 4.98 kB
+[32m✔[39m Build complete in [32m30ms[39m

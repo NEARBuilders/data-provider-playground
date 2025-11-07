@@ -1,0 +1,16 @@
+
+[0m[2m[35m$[0m [2m[1mrspack build[0m
+[1m[106m[30m ZEPHYR [39m[49m[22m  No zephyr:dependencies found in package.json, to give you more control over your dependencies, check out our documentation:
+[1m[106m[30m ZEPHYR [39m[49m[22m  https://docs.zephyr-cloud.io/how-to/dependency-management
+[1m[106m[30m ZEPHYR [39m[49m[22m  Hi [96melliot_braem[39m!
+[1m[106m[30m ZEPHYR [39m[49m[22m  [37m-data-provider-template.data-provider-playground.nearbuilders[39m[33m#396[39m
+[1m[106m[30m ZEPHYR [39m[49m[22m  
+(node:91436) [DEP0128] DeprecationWarning: Invalid 'main' field in '/Users/ebraem/workspace/bounties/data-providers/data-provider-playground/node_modules/.bun/node_modules/@effect/language-service/package.json' of 'index.cjs'. Please either fix that or report it to the module author
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[1m[106m[30m ZEPHYR [39m[49m[22m  Uploaded [32mlocal[39m snapshot in [33m215[39mms
+[1m[106m[30m ZEPHYR [39m[49m[22m  [37m([97m28[37m/[37m28[37m assets uploaded in [97m7416[37mms, [97m8735.20[37mkb)[39m
+[1m[106m[30m ZEPHYR [39m[49m[22m  Deployed to [96mZephyr[39m's edge in [33m7707[39mms.
+[1m[106m[30m ZEPHYR [39m[49m[22m  
+[1m[106m[30m ZEPHYR [39m[49m[22m  [96mhttps://elliot-braem-396-data-provider-template-data-prov-bc906d15b-ze.zephyrcloud.app[39m
+
+Rspack compiled [1m[32msuccessfully[39m[22m in 9.89 s

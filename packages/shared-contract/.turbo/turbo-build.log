@@ -1,0 +1,14 @@
+
+[0m[2m[35m$[0m [2m[1mtsdown[0m
+[34mℹ[39m tsdown [2mv0.16.1[22m powered by rolldown [2mv1.0.0-beta.47[22m
+[34mℹ[39m Using tsdown config: [4m/Users/ebraem/workspace/bounties/data-providers/data-provider-playground/packages/shared-contract/tsdown.config.ts[24m
+[34mℹ[39m entry: [34mindex.ts[39m
+[34mℹ[39m tsconfig: [34mtsconfig.json[39m
+[34mℹ[39m Build start
+[34mℹ[39m Cleaning 4 files
+[34mℹ[39m [2mdist/[22m[1mindex.mjs[22m        [2m 1.86 kB[22m [2m│ gzip: 0.71 kB[22m
+[34mℹ[39m [2mdist/[22mindex.mjs.map    [2m 3.61 kB[22m [2m│ gzip: 1.19 kB[22m
+[34mℹ[39m [2mdist/[22mindex.d.mts.map  [2m 1.28 kB[22m [2m│ gzip: 0.47 kB[22m
+[34mℹ[39m [2mdist/[22m[32m[1mindex.d.mts[22m[39m      [2m10.92 kB[22m [2m│ gzip: 1.43 kB[22m
+[34mℹ[39m 4 files, total: 17.68 kB
+[32m✔[39m Build complete in [32m2889ms[39m
