@@ -19,6 +19,8 @@ import { DataProviderService } from "./service";
  * Provider: Across (https://across.to/)
  */
 export default createPlugin({
+  id: "@every-plugin/across",
+
   variables: z.object({
     baseUrl: z.string().url().default("https://app.across.to/api"),
     timeout: z.number().min(1000).max(60000).default(15000),

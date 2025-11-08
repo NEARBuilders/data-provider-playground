@@ -177,7 +177,9 @@ export async function fetchTokenMetadataBatch(
   const promises = tokens.map(async ({ chainId, address }) => {
     try {
       const metadata = await fetchTokenMetadata(chainId, address);
-      results.set(`${chainId}:${address.toLowerCase()}`, metadata);
+      if (metadata !== null) {
+        results.set(`${chainId}:${address.toLowerCase()}`, metadata);
+      }
     } catch (error) {
       console.warn(
         `[TokenMetadata] Failed to fetch metadata for ${address} on chain ${chainId}:`,
