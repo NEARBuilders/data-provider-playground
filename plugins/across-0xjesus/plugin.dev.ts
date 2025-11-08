@@ -7,7 +7,7 @@ import packageJson from './package.json' with { type: 'json' };
 export const sampleRoute = {
   source: {
     chainId: "1",  // Ethereum Mainnet
-    assetId: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  // USDC on Ethereum
+    assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  // USDC on Ethereum
     symbol: "USDC",
     decimals: 6,
   },
@@ -36,16 +36,16 @@ export const testRoutes = [
   },
   {
     source: {
-      chainId: "10",
-      assetId: "0x4200000000000000000000000000000000000006",
-      symbol: "WETH",
-      decimals: 18,
+      chainId: "42161",
+      assetId: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+      symbol: "USDC",
+      decimals: 6,
     },
     destination: {
-      chainId: "42161",
-      assetId: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
-      symbol: "WETH",
-      decimals: 18,
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
     }
   }
 ];

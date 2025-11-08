@@ -7,13 +7,13 @@ import packageJson from './package.json' with { type: 'json' };
 export const sampleRoute = {
   source: {
     chainId: "1",  // Ethereum Mainnet
-    assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",  // USDC on Ethereum
+    assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  // USDC on Ethereum
     symbol: "USDC",
     decimals: 6,
   },
   destination: {
     chainId: "137",  // Polygon
-    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",  // USDC on Polygon
+    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",  // USDC on Polygon
     symbol: "USDC",
     decimals: 6,
   }
@@ -43,7 +43,7 @@ export const testRoutes = [
     },
     destination: {
       chainId: "1",
-      assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       symbol: "USDC",
       decimals: 6,
     }

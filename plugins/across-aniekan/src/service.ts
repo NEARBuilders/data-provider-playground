@@ -218,7 +218,7 @@ export class DataProviderService {
 
         console.log(
           `[AcrossDataProvider] Liquidity for ${route.source.symbol} -> ${route.destination.symbol}: ` +
-          `50bps=${thresholds[0].maxAmountIn}, 100bps=${thresholds[1].maxAmountIn}`
+          `50bps=${thresholds[0]?.maxAmountIn}, 100bps=${thresholds[1]?.maxAmountIn}`
         );
       } catch (error) {
         console.error(
