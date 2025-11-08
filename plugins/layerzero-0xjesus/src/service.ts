@@ -341,7 +341,6 @@ export class DataProviderService {
   private async getLiquidityDepth(
     routes: Array<{ source: AssetType; destination: AssetType }>
   ): Promise<LiquidityDepthType[]> {
-    // TODO: Module Federation bug - fetch() causes "File URL host must be localhost" error
     // Returning empty array for now until framework is fixed
     console.log(`[LayerZero] Liquidity depth unavailable (Module Federation issue)`);
     return [];
