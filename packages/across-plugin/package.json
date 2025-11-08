@@ -30,6 +30,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest --config vitest.integration.config.ts",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "example:real-data": "bun run examples/fetch-real-data.ts"
   }
 }

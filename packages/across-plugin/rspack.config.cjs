@@ -1,6 +1,5 @@
 const path = require("node:path");
 const { rspack } = require("@rspack/core");
-const { withZephyr } = require("zephyr-rspack-plugin");
 
 const pkg = require("./package.json");
 
@@ -19,6 +18,15 @@ function getPluginInfo() {
 }
 
 const pluginInfo = getPluginInfo();
+
+// Try to use zephyr if available, otherwise use plain config
+let withZephyr;
+try {
+  withZephyr = require("zephyr-rspack-plugin").withZephyr;
+} catch (e) {
+  // Zephyr not available, use identity function
+  withZephyr = (options) => (config) => config;
+}
 
 module.exports = withZephyr({
   hooks: {

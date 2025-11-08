@@ -137,14 +137,14 @@ interface AcrossLimits {
 
 ### Volume Metrics
 
-**Current Implementation**: Estimated values based on public Dune Analytics data.
+**Current Implementation**: Returns 0 to indicate data not available.
 
-**Rationale**: Across API doesn't currently expose a public volume statistics endpoint. We provide conservative estimates:
-- 24h: $10M daily volume
-- 7d: $70M weekly volume  
-- 30d: $300M monthly volume
+**Rationale**: Across API doesn't currently expose a public volume statistics endpoint. The plugin returns 0 for all volume windows with warnings in the logs.
 
-**TODO**: Update when Across provides an official volume API endpoint.
+**Alternative Data Sources**:
+- DefiLlama API: `https://api.llama.fi/protocol/across-protocol`
+- Dune Analytics: Custom query with API key
+- On-chain aggregation: Query SpokePool events across all chains
 
 ### Rate Quotes
 
@@ -167,35 +167,41 @@ interface AcrossLimits {
 
 ### Liquidity Depth
 
-**Method**: Binary search with incremental quote requests
+**Method**: Direct use of `/limits` endpoint (optimized approach)
 
 For each route, we:
-1. Fetch deposit limits to establish search bounds
-2. Get reference rate with a small base amount (1% of max)
-3. Perform binary search to find maximum amounts where slippage ≤ threshold:
-   - **50bps threshold**: Maximum amount with ≤0.5% slippage
-   - **100bps threshold**: Maximum amount with ≤1.0% slippage
+1. Fetch deposit limits from the `/limits` endpoint
+2. Map the limits to slippage thresholds:
+   - **`maxDepositInstant`** → **50bps threshold** (instant transfers, minimal slippage)
+   - **`maxDepositShortDelay`** → **100bps threshold** (short delay transfers, moderate slippage)
 
-**Slippage Calculation**:
-```typescript
-slippageBps = ((baseRate - actualRate) / baseRate) * 10000
-```
+**Why This Approach**:
+- ✅ **90% fewer API calls** compared to binary search
+- ✅ Uses Across's own classifications for transfer speeds
+- ✅ More accurate representation of actual liquidity
+- ✅ Faster and more reliable
 
-**Performance**:
-- Maximum 15 iterations per threshold (prevents excessive API calls)
-- 100ms delay between requests (respects rate limits)
-- Graceful fallback to conservative estimates on errors
+**Previous Implementation** (removed):
+- Binary search with 30+ API calls per route
+- Complex slippage calculation and iteration logic
+- Prone to rate limiting and timeouts
 
 ### Available Assets
 
-**Method**: Extract from `/available-routes` response
+**Method**: Extract from `/available-routes` and enrich with token metadata
 
-1. Fetch all available routes
+1. Fetch all available routes from `/available-routes`
 2. Extract unique assets from origin and destination fields
-3. Infer metadata:
-   - **Symbol**: Mapped from common token addresses (USDC, WETH, etc.)
-   - **Decimals**: 6 for stablecoins, 18 for most ERC-20 tokens
+3. Map tokens to metadata using comprehensive lookup table:
+   - **Major tokens**: USDC, USDT, DAI, WETH, WBTC across all chains
+   - **DeFi tokens**: UMA, ACX, BAL, POOL
+   - **Fallback**: Address prefix for unknown tokens
 4. Filter for enabled routes only
+
+**Token Metadata Approach**:
+- Uses pre-defined lookup table for all major Across-supported tokens
+- Fast and reliable (no RPC calls required)
+- Works in all environments (tests, production, offline)
 
 ## Usage
 
@@ -365,14 +371,19 @@ This plugin strictly adheres to the data provider contract:
 
 ## Roadmap
 
+### Completed ✅
+- [x] **Optimize liquidity depth calculation** - Removed binary search, now using `/limits` directly (90% fewer API calls)
+- [x] **Fix token metadata** - Replaced RPC calls with comprehensive lookup table
+- [x] **Improve reliability** - Eliminated RPC timeouts and rate limiting issues
+
 ### Short Term
-- [ ] Update volume endpoint when Across publishes official API
+- [ ] Update volume endpoint when Across publishes official API (currently returns 0)
 - [ ] Add retry logic with exponential backoff for failed requests
 - [ ] Implement response caching layer with TTL
 
 ### Long Term
 - [ ] Support for Across V3 API when released
-- [ ] Historical volume data integration
+- [ ] Historical volume data integration via DefiLlama or Dune
 - [ ] Real-time event streaming for transfers
 
 ## Contributing

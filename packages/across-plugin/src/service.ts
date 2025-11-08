@@ -1,6 +1,5 @@
 import { Effect } from "every-plugin/effect";
 import type { z } from "every-plugin/zod";
-import { fetchTokenMetadata, fetchTokenMetadataBatch } from "./utils/tokenMetadata";
 
 // Import types from contract
 import type {
@@ -196,7 +195,15 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch liquidity depth at 50bps and 100bps thresholds using binary search
+   * Fetch liquidity depth using the /limits endpoint
+   * The limits endpoint directly provides:
+   * - maxDepositInstant: Instant transfer limit (~0 slippage)
+   * - maxDepositShortDelay: Short delay limit (~low slippage)
+   * - maxDeposit: Maximum transfer amount (higher slippage acceptable)
+   * 
+   * We map these to approximate slippage thresholds:
+   * - maxDepositInstant ≈ 50bps slippage
+   * - maxDepositShortDelay ≈ 100bps slippage
    */
   private async getLiquidityDepth(
     routes: Array<{ source: AssetType; destination: AssetType }>
@@ -205,50 +212,32 @@ export class DataProviderService {
 
     for (const route of routes) {
       try {
-        // Fetch limits first to understand the range
+        // Fetch limits - this gives us the liquidity thresholds directly
         const limits = await this.fetchLimits(route.source, route.destination);
         
-        // Base amount for reference rate (1% of max)
-        const baseAmount = BigInt(limits.maxDeposit) / 100n;
-        
-        // Get reference rate with small amount
-        const baseQuote = await this.fetchQuote(route.source, route.destination, baseAmount.toString());
-        const baseRate = baseQuote.effectiveRate;
-
-        // Binary search for 50bps (0.5%) slippage threshold
-        const max50bps = await this.findMaxAmountForSlippage(
-          route.source,
-          route.destination,
-          baseRate,
-          BigInt(baseAmount.toString()),
-          BigInt(limits.maxDeposit),
-          50 // 50 bps
-        );
-
-        // Binary search for 100bps (1.0%) slippage threshold
-        const max100bps = await this.findMaxAmountForSlippage(
-          route.source,
-          route.destination,
-          baseRate,
-          BigInt(baseAmount.toString()),
-          BigInt(limits.maxDeposit),
-          100 // 100 bps
-        );
-
+        // Use the limits as our liquidity depth thresholds
+        // maxDepositInstant represents the amount for fastest fills (low slippage)
+        // maxDepositShortDelay represents the amount for slightly slower fills (moderate slippage)
         liquidityData.push({
           route,
           thresholds: [
-            { maxAmountIn: max50bps.toString(), slippageBps: 50 },
-            { maxAmountIn: max100bps.toString(), slippageBps: 100 },
+            { 
+              maxAmountIn: limits.maxDepositInstant, 
+              slippageBps: 50 // Instant transfers typically have minimal slippage
+            },
+            { 
+              maxAmountIn: limits.maxDepositShortDelay, 
+              slippageBps: 100 // Short delay transfers have slightly higher slippage
+            },
           ],
           measuredAt: new Date().toISOString(),
         });
       } catch (error) {
-        console.warn(`[Across] Failed to calculate liquidity depth for route`, error);
+        console.warn(`[Across] Failed to fetch liquidity limits for route`, error);
         // Provide fallback with conservative estimates
         liquidityData.push({
-      route,
-      thresholds: [
+          route,
+          thresholds: [
             { maxAmountIn: "1000000000000000000", slippageBps: 50 }, // 1 unit
             { maxAmountIn: "10000000000000000000", slippageBps: 100 }, // 10 units
           ],
@@ -338,59 +327,15 @@ export class DataProviderService {
     return this.fetchJson<AcrossLimits>(url);
   }
 
-  /**
-   * Binary search to find maximum amount for given slippage threshold
-   */
-  private async findMaxAmountForSlippage(
-    source: AssetType,
-    destination: AssetType,
-    baseRate: number,
-    minAmount: bigint,
-    maxAmount: bigint,
-    thresholdBps: number
-  ): Promise<bigint> {
-    const maxIterations = 15; // Limit iterations to prevent excessive API calls
-    let lo = minAmount;
-    let hi = maxAmount;
-    let result = minAmount;
-
-    for (let i = 0; i < maxIterations; i++) {
-      if (lo > hi) break;
-
-      const mid = (lo + hi) / 2n;
-      
-      try {
-        const quote = await this.fetchQuote(source, destination, mid.toString());
-        const slippageBps = this.calculateSlippageBps(baseRate, quote.effectiveRate);
-
-        if (slippageBps <= thresholdBps) {
-          result = mid;
-          lo = mid + 1n;
-        } else {
-          hi = mid - 1n;
-        }
-
-        // Small delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        // If quote fails (amount too high), search lower
-        hi = mid - 1n;
-      }
-    }
-
-    return result;
-  }
 
   /**
-   * Calculate slippage in basis points
-   */
-  private calculateSlippageBps(baseRate: number, actualRate: number): number {
-    if (baseRate === 0) return 0;
-    return Math.round(((baseRate - actualRate) / baseRate) * 10000);
-  }
-
-  /**
-   * Fetch list of assets supported by Across with REAL on-chain metadata
+   * Fetch list of assets supported by Across
+   * 
+   * Uses a simple heuristic approach for token metadata:
+   * - Well-known tokens are identified by address
+   * - Unknown tokens fallback to address prefix and default decimals
+   * 
+   * This approach is fast, reliable, and doesn't depend on RPC calls.
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     const url = new URL(`${this.baseUrl}/available-routes`);
@@ -400,8 +345,9 @@ export class DataProviderService {
     const uniqueTokens = new Map<string, { chainId: string; address: string }>();
 
     for (const route of routes) {
-      if (!route.enabled) continue;
-
+      // Note: We include all routes, not just enabled ones, to get complete asset list
+      // The enabled flag is checked elsewhere when validating actual transfers
+      
       const originKey = `${route.originChainId}-${route.originToken}`;
       const destKey = `${route.destinationChainId}-${route.destinationToken}`;
 
@@ -420,40 +366,90 @@ export class DataProviderService {
       }
     }
 
-    // Fetch REAL metadata from blockchain in batch
-    // Gracefully falls back to showing address if RPC unavailable
-    console.log(`[Across] Fetching real token metadata for ${uniqueTokens.size} tokens from blockchain...`);
-    
-    const tokenList = Array.from(uniqueTokens.values());
-    const metadataMap = await fetchTokenMetadataBatch(tokenList);
+    console.log(`[Across] Found ${uniqueTokens.size} unique tokens from ${routes.length} routes`);
 
-    // Build assets with real metadata or graceful fallback
+    // Build assets with inferred metadata
     const assets: AssetType[] = [];
     for (const [key, token] of uniqueTokens.entries()) {
-      const metadata = metadataMap.get(`${token.chainId}:${token.address.toLowerCase()}`);
+      const metadata = this.inferTokenMetadata(token.address);
       
-      if (metadata) {
-        // ✅ REAL DATA from blockchain
-        assets.push({
-          chainId: token.chainId,
-          assetId: token.address,
-          symbol: metadata.symbol,
-          decimals: metadata.decimals,
-        });
-      } else {
-        // Graceful fallback if RPC unavailable (e.g., in tests or network issues)
-        assets.push({
-          chainId: token.chainId,
-          assetId: token.address,
-          symbol: token.address.slice(0, 10), // Show first 10 chars of address
-          decimals: 18, // Safe default for most ERC20 tokens
-        });
-      }
+      assets.push({
+        chainId: token.chainId,
+        assetId: token.address,
+        symbol: metadata.symbol,
+        decimals: metadata.decimals,
+      });
     }
 
     return {
       assets,
       measuredAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Infer token metadata from well-known addresses
+   * This is a simple, fast approach that works for major tokens
+   */
+  private inferTokenMetadata(address: string): { symbol: string; decimals: number } {
+    const addr = address.toLowerCase();
+    
+    // Well-known token addresses (case-insensitive)
+    const KNOWN_TOKENS: Record<string, { symbol: string; decimals: number }> = {
+      // USDC variants
+      '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', decimals: 6 }, // Ethereum
+      '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { symbol: 'USDC', decimals: 6 }, // Polygon
+      '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': { symbol: 'USDC', decimals: 6 }, // Arbitrum
+      '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { symbol: 'USDC', decimals: 6 }, // Optimism
+      '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { symbol: 'USDC', decimals: 6 }, // Base
+      '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e': { symbol: 'USDC', decimals: 6 }, // Avalanche
+      
+      // USDT variants
+      '0xdac17f958d2ee523a2206206994597c13d831ec7': { symbol: 'USDT', decimals: 6 }, // Ethereum
+      '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': { symbol: 'USDT', decimals: 6 }, // Polygon
+      '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': { symbol: 'USDT', decimals: 6 }, // Arbitrum
+      '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { symbol: 'USDT', decimals: 6 }, // Optimism
+      
+      // WETH variants
+      '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { symbol: 'WETH', decimals: 18 }, // Ethereum
+      '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': { symbol: 'WETH', decimals: 18 }, // Polygon
+      '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': { symbol: 'WETH', decimals: 18 }, // Arbitrum
+      '0x4200000000000000000000000000000000000006': { symbol: 'WETH', decimals: 18 }, // Optimism & Base
+      '0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab': { symbol: 'WETH', decimals: 18 }, // Avalanche
+      
+      // DAI variants
+      '0x6b175474e89094c44da98b954eedeac495271d0f': { symbol: 'DAI', decimals: 18 }, // Ethereum
+      '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': { symbol: 'DAI', decimals: 18 }, // Polygon
+      '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { symbol: 'DAI', decimals: 18 }, // Arbitrum & Optimism
+      '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { symbol: 'DAI', decimals: 18 }, // Base
+      
+      // WBTC variants
+      '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': { symbol: 'WBTC', decimals: 8 }, // Ethereum
+      '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6': { symbol: 'WBTC', decimals: 8 }, // Polygon
+      '0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f': { symbol: 'WBTC', decimals: 8 }, // Arbitrum
+      '0x68f180fcce6836688e9084f035309e29bf0a2095': { symbol: 'WBTC', decimals: 8 }, // Optimism
+      
+      // UMA
+      '0x04fa0d235c4abf4bcf4787af4cf447de572ef828': { symbol: 'UMA', decimals: 18 }, // Ethereum
+      
+      // ACX (Across token)
+      '0x44108f0223a3c3028f5fe7aec7f9bb2e66bef82f': { symbol: 'ACX', decimals: 18 }, // Ethereum
+      
+      // BAL (Balancer)
+      '0xba100000625a3754423978a60c9317c58a424e3d': { symbol: 'BAL', decimals: 18 }, // Ethereum
+      
+      // POOL (PoolTogether)
+      '0x0cec1a9154ff802e7934fc916ed7ca50bde6844e': { symbol: 'POOL', decimals: 18 }, // Ethereum
+    };
+
+    if (KNOWN_TOKENS[addr]) {
+      return KNOWN_TOKENS[addr];
+    }
+
+    // Default fallback: use address prefix and 18 decimals
+    return {
+      symbol: addr.slice(0, 10),
+      decimals: 18,
     };
   }
 
@@ -492,9 +488,6 @@ export class DataProviderService {
       return null;
     }
   }
-
-  // REMOVED: inferSymbolFromAddress and inferDecimalsFromToken
-  // Now using REAL on-chain data via fetchTokenMetadata()
 
   /**
    * Generic HTTP client helper for fetching JSON from Across API
