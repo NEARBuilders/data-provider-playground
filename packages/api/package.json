@@ -15,8 +15,10 @@
     "build": "tsdown"
   },
   "devDependencies": {
-    "tsdown": "^0.15.5",
-    "@data-provider/template": "workspace:*"
+    "@data-provider/template": "workspace:*",
+    "@data-provider/shared-contract": "workspace:*",
+    "@types/node": "^24.10.0",
+    "tsdown": "^0.15.5"
   },
   "peerDependencies": {
     "typescript": "^5"

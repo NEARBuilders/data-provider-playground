@@ -54,15 +54,15 @@ export const testNotionals = ["1000000", "10000000"];
 
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE
-  port: 3014,
+  port: 3020,
   config: {
     // Update these variables to what's required for your plugin
     variables: {
-      baseUrl: "https://api.example.com",
+      baseUrl: "https://api.wormholescan.io",
       timeout: 10000
     },
     secrets: {
-      apiKey: process.env.PLUGIN_API_KEY || "dev-key-12345"
+      apiKey: "not-required"
     }
   } satisfies PluginConfigInput<typeof Plugin>
 }

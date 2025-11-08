@@ -2,8 +2,8 @@
   "name": "@data-provider/wormhole-fati",
   "version": "0.0.1",
   "description": "Template plugin for every-plugin framework",
-	"main": "./dist/index.js",
-	"types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
   "type": "module",
   "peerDependencies": {
     "typescript": "^5.0.0"
@@ -15,8 +15,9 @@
     "@rspack/cli": "^1.5.2",
     "@rspack/core": "^1.5.2",
     "@types/node": "^24.6.0",
+    "axios": "^1.13.2",
     "dotenv": "^17.2.2",
-    "every-plugin": "0.4.10",
+    "every-plugin": "catalog:",
     "msw": "^2.3.0",
     "sirv": "^3.0.2",
     "vite-tsconfig-paths": "^5.1.4",

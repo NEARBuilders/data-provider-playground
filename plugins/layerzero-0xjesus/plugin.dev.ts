@@ -54,7 +54,7 @@ export const testNotionals = ["1000000000000000000"];
 
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE
-  port: 3014,
+  port: 3015,
   config: {
     // Update these variables to what's required for your plugin
     variables: {
