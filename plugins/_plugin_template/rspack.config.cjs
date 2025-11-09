@@ -1,12 +1,18 @@
 const { EveryPluginDevServer } = require('every-plugin/build/rspack');
-const { withZephyr } = require('zephyr-rspack-plugin');
+// const { withZephyr } = require('zephyr-rspack-plugin');
 
+// Zephyr disabled for local development to avoid authentication issues
+// Uncomment the withZephyr wrapper when deploying to production
+module.exports = {
+  plugins: [new EveryPluginDevServer()],
+};
+
+/* Production config with Zephyr enabled:
 module.exports = withZephyr({
   hooks: {
     onDeployComplete: (info) => {
-
       console.log('🚀 Deployment Complete!');
-      console.log(`   URL: ${info.url}`); // remote URL
+      console.log(`   URL: ${info.url}`);
       console.log(`   Module: ${info.snapshot.uid.app_name}`);
       console.log(`   Build ID: ${info.snapshot.uid.build}`);
       console.log(`   Dependencies: ${info.federatedDependencies.length}`);
@@ -17,3 +23,4 @@ module.exports = withZephyr({
 })({
   plugins: [new EveryPluginDevServer()],
 });
+*/
