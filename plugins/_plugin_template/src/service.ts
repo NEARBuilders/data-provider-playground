@@ -64,7 +64,18 @@ export class DataProviderService {
    * TODO: Implement provider's volume API endpoint
    */
   private async getVolumes(windows: TimeWindow[]): Promise<VolumeWindowType[]> {
-    return [];
+    // Mock data for template - replace with actual API calls
+    const volumeMap = {
+      "24h": 50000000,   // $50M
+      "7d": 350000000,   // $350M
+      "30d": 1500000000, // $1.5B
+    };
+
+    return windows.map(window => ({
+      window,
+      volumeUsd: volumeMap[window] || 0,
+      measuredAt: new Date().toISOString(),
+    }));
   }
 
   /**
@@ -72,7 +83,34 @@ export class DataProviderService {
    * TODO: Implement provider's quote API endpoint
    */
   private async getRates(routes: Array<{ source: AssetType; destination: AssetType }>, notionals: string[]): Promise<RateType[]> {
-    return [];
+    // Mock data for template - replace with actual API calls
+    const rates: RateType[] = [];
+
+    for (const route of routes) {
+      for (const notional of notionals) {
+        const amountIn = BigInt(notional);
+        // Simulate 0.1% fee
+        const fee = amountIn / BigInt(1000);
+        const amountOut = amountIn - fee;
+
+        const sourceScale = Math.pow(10, route.source.decimals);
+        const destScale = Math.pow(10, route.destination.decimals);
+        const effectiveRate = (Number(amountOut) / destScale) / (Number(amountIn) / sourceScale);
+        const feeUsd = Number(fee) / sourceScale;
+
+        rates.push({
+          source: route.source,
+          destination: route.destination,
+          amountIn: notional,
+          amountOut: amountOut.toString(),
+          effectiveRate,
+          totalFeesUsd: feeUsd,
+          quotedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    return rates;
   }
 
   /**
@@ -80,7 +118,30 @@ export class DataProviderService {
    * TODO: Implement provider's liquidity API or simulate with quotes
    */
   private async getLiquidityDepth(routes: Array<{ source: AssetType; destination: AssetType }>): Promise<LiquidityDepthType[]> {
-    return [];
+    // Mock data for template - replace with actual API calls
+    return routes.map(route => {
+      const baseLiquidity = 10000000; // $10M base liquidity
+      const maxAt50bps = Math.floor(baseLiquidity * 0.02 * Math.pow(10, route.source.decimals));
+      const maxAt100bps = Math.floor(baseLiquidity * 0.05 * Math.pow(10, route.source.decimals));
+
+      return {
+        route: {
+          source: route.source,
+          destination: route.destination,
+        },
+        thresholds: [
+          {
+            maxAmountIn: maxAt50bps.toString(),
+            slippageBps: 50,
+          },
+          {
+            maxAmountIn: maxAt100bps.toString(),
+            slippageBps: 100,
+          },
+        ],
+        measuredAt: new Date().toISOString(),
+      };
+    });
   }
 
   /**
@@ -88,8 +149,22 @@ export class DataProviderService {
    * TODO: Implement provider's assets API endpoint
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
+    // Mock data for template - replace with actual API calls
     return {
-      assets: [],
+      assets: [
+        {
+          chainId: "1",
+          assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",
+          symbol: "USDC",
+          decimals: 6,
+        },
+        {
+          chainId: "137",
+          assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
+          symbol: "USDC",
+          decimals: 6,
+        },
+      ],
       measuredAt: new Date().toISOString(),
     };
   }
