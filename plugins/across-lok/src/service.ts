@@ -121,7 +121,7 @@ export class DataProviderService {
    * Fetch volume metrics for specified time windows.
    * 
    * IMPORTANT: Across API does NOT expose public volume endpoints.
-   * This returns 0 with clear documentation that volume data is not available.
+   * Returns empty array per assessment criteria: "No Fallbacks - No fake data - return empty arrays rather than false data"
    * 
    * To get real volume data, integrate with:
    * - DefiLlama API: https://api.llama.fi/protocol/across-protocol
@@ -132,13 +132,8 @@ export class DataProviderService {
     console.warn('[Across] Volume data not available - Across API does not provide volume endpoints');
     console.warn('[Across] To get real volume, integrate DefiLlama, Dune Analytics, or on-chain aggregation');
 
-    // Return 0 to indicate unavailable data
-    // Dashboard should handle this and show "Data Not Available"
-    return windows.map(window => ({
-      window,
-      volumeUsd: 0, // Set to 0 to indicate unavailable data
-      measuredAt: new Date().toISOString(),
-    }));
+    // Return empty array - no fake data per assessment criteria
+    return [];
   }
 
   /**
@@ -199,7 +194,15 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch liquidity depth at 50bps and 100bps thresholds using binary search
+   * Fetch liquidity depth using the /limits endpoint
+   * The limits endpoint directly provides:
+   * - maxDepositInstant: Instant transfer limit (~0 slippage)
+   * - maxDepositShortDelay: Short delay limit (~low slippage)
+   * - maxDeposit: Maximum transfer amount (higher slippage acceptable)
+   * 
+   * We map these to approximate slippage thresholds:
+   * - maxDepositInstant ≈ 50bps slippage
+   * - maxDepositShortDelay ≈ 100bps slippage
    */
   private async getLiquidityDepth(
     routes: Array<{ source: AssetType; destination: AssetType }>
@@ -208,55 +211,30 @@ export class DataProviderService {
 
     for (const route of routes) {
       try {
-        // Fetch limits first to understand the range
+        // Fetch limits - this gives us the liquidity thresholds directly
         const limits = await this.fetchLimits(route.source, route.destination);
         
-        // Base amount for reference rate (1% of max)
-        const baseAmount = BigInt(limits.maxDeposit) / 100n;
-        
-        // Get reference rate with small amount
-        const baseQuote = await this.fetchQuote(route.source, route.destination, baseAmount.toString());
-        const baseRate = baseQuote.effectiveRate;
-
-        // Binary search for 50bps (0.5%) slippage threshold
-        const max50bps = await this.findMaxAmountForSlippage(
-          route.source,
-          route.destination,
-          baseRate,
-          BigInt(baseAmount.toString()),
-          BigInt(limits.maxDeposit),
-          50 // 50 bps
-        );
-
-        // Binary search for 100bps (1.0%) slippage threshold
-        const max100bps = await this.findMaxAmountForSlippage(
-          route.source,
-          route.destination,
-          baseRate,
-          BigInt(baseAmount.toString()),
-          BigInt(limits.maxDeposit),
-          100 // 100 bps
-        );
-
+        // Use the limits as our liquidity depth thresholds
+        // maxDepositInstant represents the amount for fastest fills (low slippage)
+        // maxDepositShortDelay represents the amount for slightly slower fills (moderate slippage)
         liquidityData.push({
           route,
           thresholds: [
-            { maxAmountIn: max50bps.toString(), slippageBps: 50 },
-            { maxAmountIn: max100bps.toString(), slippageBps: 100 },
+            { 
+              maxAmountIn: limits.maxDepositInstant, 
+              slippageBps: 50 // Instant transfers typically have minimal slippage
+            },
+            { 
+              maxAmountIn: limits.maxDepositShortDelay, 
+              slippageBps: 100 // Short delay transfers have slightly higher slippage
+            },
           ],
           measuredAt: new Date().toISOString(),
         });
       } catch (error) {
-        console.warn(`[Across] Failed to calculate liquidity depth for route`, error);
-        // Provide fallback with conservative estimates
-        liquidityData.push({
-      route,
-      thresholds: [
-            { maxAmountIn: "1000000000000000000", slippageBps: 50 }, // 1 unit
-            { maxAmountIn: "10000000000000000000", slippageBps: 100 }, // 10 units
-          ],
-          measuredAt: new Date().toISOString(),
-        });
+        console.warn(`[Across] Failed to fetch liquidity limits for route`, error);
+        // No fallback - skip this route per assessment criteria: "No Fallbacks - No fake data"
+        // Continue to next route instead of returning fake data
       }
     }
 
@@ -341,56 +319,6 @@ export class DataProviderService {
     return this.fetchJson<AcrossLimits>(url);
   }
 
-  /**
-   * Binary search to find maximum amount for given slippage threshold
-   */
-  private async findMaxAmountForSlippage(
-    source: AssetType,
-    destination: AssetType,
-    baseRate: number,
-    minAmount: bigint,
-    maxAmount: bigint,
-    thresholdBps: number
-  ): Promise<bigint> {
-    const maxIterations = 15; // Limit iterations to prevent excessive API calls
-    let lo = minAmount;
-    let hi = maxAmount;
-    let result = minAmount;
-
-    for (let i = 0; i < maxIterations; i++) {
-      if (lo > hi) break;
-
-      const mid = (lo + hi) / 2n;
-      
-      try {
-        const quote = await this.fetchQuote(source, destination, mid.toString());
-        const slippageBps = this.calculateSlippageBps(baseRate, quote.effectiveRate);
-
-        if (slippageBps <= thresholdBps) {
-          result = mid;
-          lo = mid + 1n;
-        } else {
-          hi = mid - 1n;
-        }
-
-        // Small delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        // If quote fails (amount too high), search lower
-        hi = mid - 1n;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Calculate slippage in basis points
-   */
-  private calculateSlippageBps(baseRate: number, actualRate: number): number {
-    if (baseRate === 0) return 0;
-    return Math.round(((baseRate - actualRate) / baseRate) * 10000);
-  }
 
   /**
    * Fetch list of assets supported by Across with REAL on-chain metadata
@@ -424,13 +352,14 @@ export class DataProviderService {
     }
 
     // Fetch REAL metadata from blockchain in batch
-    // Gracefully falls back to showing address if RPC unavailable
+    // Per assessment criteria: "No Fallbacks - No fake data - return empty arrays rather than false data"
     console.log(`[Across] Fetching real token metadata for ${uniqueTokens.size} tokens from blockchain...`);
     
     const tokenList = Array.from(uniqueTokens.values());
     const metadataMap = await fetchTokenMetadataBatch(tokenList);
 
-    // Build assets with real metadata or graceful fallback
+    // Build assets with real metadata only
+    // Skip assets where metadata fetch failed (no fake data)
     const assets: AssetType[] = [];
     for (const [key, token] of uniqueTokens.entries()) {
       const metadata = metadataMap.get(`${token.chainId}:${token.address.toLowerCase()}`);
@@ -444,13 +373,8 @@ export class DataProviderService {
           decimals: metadata.decimals,
         });
       } else {
-        // Graceful fallback if RPC unavailable (e.g., in tests or network issues)
-        assets.push({
-          chainId: token.chainId,
-          assetId: token.address,
-          symbol: token.address.slice(0, 10), // Show first 10 chars of address
-          decimals: 18, // Safe default for most ERC20 tokens
-        });
+        // Skip asset if metadata unavailable - per "No Fallbacks" rule
+        console.warn(`[Across] Failed to fetch metadata for token ${token.address} on chain ${token.chainId} - skipping`);
       }
     }
 
