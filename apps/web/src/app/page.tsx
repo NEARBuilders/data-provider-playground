@@ -1,5 +1,8 @@
 import { SERVER_URL } from "@/utils/orpc";
 
+// Extract base URL without /api/rpc suffix for API docs
+const API_DOCS_URL = SERVER_URL.replace('/api/rpc', '/api');
+
 export default function Home() {
   return (
     <div className="container mx-auto max-w-3xl px-6 py-12">
@@ -52,7 +55,7 @@ const { data } = useQuery(
           <ul className="space-y-3">
             <li>
               <a
-                href={`${SERVER_URL}/api`}
+                href={API_DOCS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:underline text-lg"

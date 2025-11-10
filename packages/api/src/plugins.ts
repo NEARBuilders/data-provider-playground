@@ -1,4 +1,4 @@
-import type DataProviderTemplatePlugin from "@data-provider/template";
+import type DataProviderAxelarPlugin from "@data-provider/axelar-usman";
 import { createPluginRuntime } from "every-plugin";
 
 declare module "every-plugin" {
@@ -14,7 +14,7 @@ declare module "every-plugin" {
 }
 
 const env = {
-  DATA_PROVIDER_API_KEY: process.env.DATA_PROVIDER_API_KEY!,
+  DATA_PROVIDER_API_KEY: process.env.DATA_PROVIDER_API_KEY || "",
 };
 
 export const runtime = createPluginRuntime({
