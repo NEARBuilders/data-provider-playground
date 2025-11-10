@@ -18,8 +18,6 @@ import { DataProviderService } from "./service";
  * - Comprehensive error handling
  */
 export default createPlugin({
-  id: "@near-intents/debridge-data-provider",
-
   variables: z.object({
     baseUrl: z.string().url().default("https://dln.debridge.finance/v1.0"),
     defillamaBaseUrl: z.string().url().default("https://bridges.llama.fi"),

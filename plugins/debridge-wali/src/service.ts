@@ -1,17 +1,38 @@
 import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
+import { z } from "every-plugin/zod";
 import Decimal from "decimal.js";
 
 // Import types from contract
-import type {
+import {
   Asset,
   Rate,
   LiquidityDepth,
   VolumeWindow,
   ListedAssets,
-  ProviderSnapshot,
-  RouteIntelligence
+  ProviderSnapshot
 } from "./contract";
+
+// Route intelligence - advanced metrics for route quality assessment
+export const RouteIntelligence = z.object({
+  route: z.object({ source: Asset, destination: Asset }),
+  // Maximum discovered capacity (largest successful quote)
+  maxCapacityUsd: z.number().nullable(),
+  // Optimal trade size range (where fees are most favorable)
+  optimalRangeUsd: z.object({
+    min: z.number(),
+    max: z.number(),
+  }).nullable(),
+  // Fee efficiency score (0-100, higher = better rates at different sizes)
+  feeEfficiencyScore: z.number().min(0).max(100).nullable(),
+  // Price impact analysis (how rate degrades with size)
+  priceImpactBps: z.object({
+    at1k: z.number().nullable(),    // impact at $1k
+    at10k: z.number().nullable(),   // impact at $10k
+    at100k: z.number().nullable(),  // impact at $100k
+  }),
+  measuredAt: z.iso.datetime(),
+});
+
 
 // Import utilities
 import { DecimalUtils } from "./utils/decimal";
@@ -272,21 +293,20 @@ export class DataProviderService {
    * - Supported assets across all chains
    */
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
     includeIntelligence?: boolean; // NEW: Optional route intelligence analysis
   }) {
-    if (!params?.routes?.length || !params?.notionals?.length) {
-      return Effect.fail(new Error('Routes and notionals are required'));
-    }
-
     return Effect.tryPromise({
       try: async () => {
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
         const timer = new PerformanceTimer();
         this.logger.info('Snapshot fetch started', {
-          routeCount: params.routes.length,
-          notionalCount: params.notionals.length,
+          routeCount: params.routes?.length || 0,
+          notionalCount: params.notionals?.length || 0,
           windows: params.includeWindows,
           includeIntelligence: params.includeIntelligence || false,
         });
@@ -295,19 +315,18 @@ export class DataProviderService {
           // Fetch all metrics in parallel for performance
           timer.mark('fetchStart');
         
-          // Base metrics (always fetched)
-          const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-            this.getVolumes(params.includeWindows || ["24h"]),
-            this.getRates(params.routes, params.notionals),
-            this.getLiquidityDepth(params.routes),
-            this.getListedAssets(params.routes)
-          ]);
+        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+          this.getVolumes(params.includeWindows || ["24h"]),
+          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+          hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
+          this.getListedAssets(params.routes || [])
+        ]);
           
           // Optional route intelligence (only if requested)
           let routeIntelligence: RouteIntelligenceType[] | undefined;
-          if (params.includeIntelligence) {
-            this.logger.info('Fetching route intelligence', { routeCount: params.routes.length });
-            routeIntelligence = await this.getRouteIntelligence(params.routes);
+          if (params.includeIntelligence && hasRoutes) {
+            this.logger.info('Fetching route intelligence', { routeCount: params.routes?.length });
+            routeIntelligence = await this.getRouteIntelligence(params.routes!);
           }
           
           timer.mark('fetchEnd');
@@ -1086,7 +1105,7 @@ export class DataProviderService {
         // Analyze results
         const successfulQuotes = quotes.filter(q => !q.failed);
         const maxCapacityUsd = successfulQuotes.length > 0
-          ? successfulQuotes[successfulQuotes.length - 1].amountUsd
+          ? successfulQuotes[successfulQuotes.length - 1]!.amountUsd
           : null;
 
         // Calculate fee efficiency score (0-100)
@@ -1110,8 +1129,8 @@ export class DataProviderService {
           );
           if (optimalQuotes.length > 0) {
             optimalRangeUsd = {
-              min: optimalQuotes[0].amountUsd,
-              max: optimalQuotes[optimalQuotes.length - 1].amountUsd,
+              min: optimalQuotes[0]!.amountUsd,
+              max: optimalQuotes[optimalQuotes.length - 1]!.amountUsd,
             };
           }
         }
