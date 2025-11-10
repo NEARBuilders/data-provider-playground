@@ -13,25 +13,25 @@ import {
 } from "./contract";
 
 // Route intelligence - advanced metrics for route quality assessment
-export const RouteIntelligence = z.object({
-  route: z.object({ source: Asset, destination: Asset }),
-  // Maximum discovered capacity (largest successful quote)
-  maxCapacityUsd: z.number().nullable(),
-  // Optimal trade size range (where fees are most favorable)
-  optimalRangeUsd: z.object({
-    min: z.number(),
-    max: z.number(),
-  }).nullable(),
-  // Fee efficiency score (0-100, higher = better rates at different sizes)
-  feeEfficiencyScore: z.number().min(0).max(100).nullable(),
-  // Price impact analysis (how rate degrades with size)
-  priceImpactBps: z.object({
-    at1k: z.number().nullable(),    // impact at $1k
-    at10k: z.number().nullable(),   // impact at $10k
-    at100k: z.number().nullable(),  // impact at $100k
-  }),
-  measuredAt: z.iso.datetime(),
-});
+// export const RouteIntelligence = z.object({
+//   route: z.object({ source: Asset, destination: Asset }),
+//   // Maximum discovered capacity (largest successful quote)
+//   maxCapacityUsd: z.number().nullable(),
+//   // Optimal trade size range (where fees are most favorable)
+//   optimalRangeUsd: z.object({
+//     min: z.number(),
+//     max: z.number(),
+//   }).nullable(),
+//   // Fee efficiency score (0-100, higher = better rates at different sizes)
+//   feeEfficiencyScore: z.number().min(0).max(100).nullable(),
+//   // Price impact analysis (how rate degrades with size)
+//   priceImpactBps: z.object({
+//     at1k: z.number().nullable(),    // impact at $1k
+//     at10k: z.number().nullable(),   // impact at $10k
+//     at100k: z.number().nullable(),  // impact at $100k
+//   }),
+//   measuredAt: z.iso.datetime(),
+// });
 
 
 // Import utilities
@@ -47,7 +47,7 @@ type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
 type VolumeWindowType = z.infer<typeof VolumeWindow>;
 type ListedAssetsType = z.infer<typeof ListedAssets>;
 type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
-type RouteIntelligenceType = z.infer<typeof RouteIntelligence>;
+// type RouteIntelligenceType = z.infer<typeof RouteIntelligence>;
 
 /**
  * Token Bucket Rate Limiter
@@ -296,7 +296,6 @@ export class DataProviderService {
     routes?: Array<{ source: AssetType; destination: AssetType }>;
     notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
-    includeIntelligence?: boolean; // NEW: Optional route intelligence analysis
   }) {
     return Effect.tryPromise({
       try: async () => {
@@ -307,8 +306,7 @@ export class DataProviderService {
         this.logger.info('Snapshot fetch started', {
           routeCount: params.routes?.length || 0,
           notionalCount: params.notionals?.length || 0,
-          windows: params.includeWindows,
-          includeIntelligence: params.includeIntelligence || false,
+          windows: params.includeWindows
         });
 
         try {
@@ -322,12 +320,12 @@ export class DataProviderService {
           this.getListedAssets(params.routes || [])
         ]);
           
-          // Optional route intelligence (only if requested)
-          let routeIntelligence: RouteIntelligenceType[] | undefined;
-          if (params.includeIntelligence && hasRoutes) {
-            this.logger.info('Fetching route intelligence', { routeCount: params.routes?.length });
-            routeIntelligence = await this.getRouteIntelligence(params.routes!);
-          }
+          // Optional route intelligence
+          // let routeIntelligence: RouteIntelligenceType[] | undefined;
+          // if (params.includeIntelligence && hasRoutes) {
+          //   this.logger.info('Fetching route intelligence', { routeCount: params.routes?.length });
+          //   routeIntelligence = await this.getRouteIntelligence(params.routes!);
+          // }
           
           timer.mark('fetchEnd');
 
@@ -337,7 +335,7 @@ export class DataProviderService {
             rateCount: rates.length,
             liquidityCount: liquidity.length,
             assetCount: listedAssets.assets.length,
-            intelligenceCount: routeIntelligence?.length || 0,
+            // intelligenceCount: routeIntelligence?.length || 0,
           });
 
           return {
@@ -345,7 +343,7 @@ export class DataProviderService {
             rates,
             liquidity,
             listedAssets,
-            ...(routeIntelligence && { routeIntelligence }),
+            // ...(routeIntelligence && { routeIntelligence }),
           } satisfies ProviderSnapshotType;
         } catch (error) {
           this.logger.error('Snapshot fetch failed', {
@@ -894,7 +892,7 @@ export class DataProviderService {
         try {
           // Test connection to deBridge API
           await HttpUtils.fetchWithRetry<any>(
-            `${this.dlnApiBase}/supported-chains-info`,
+            `${this.dlnApiBase}/supported-chains`,
             {
               headers: this.apiKey ? { 'Authorization': `Bearer ${this.apiKey}` } : {}
             },
@@ -1050,8 +1048,8 @@ export class DataProviderService {
    */
   private async getRouteIntelligence(
     routes: Array<{ source: AssetType; destination: AssetType }>
-  ): Promise<RouteIntelligenceType[]> {
-    const intelligence: RouteIntelligenceType[] = [];
+  ): Promise<any> {
+    const intelligence: any[] = [];
     const now = new Date().toISOString();
 
     for (const route of routes) {

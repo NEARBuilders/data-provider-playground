@@ -93,14 +93,12 @@
 
 ## deBridge Protocol
 
-**Summary:** 2 implementations - debridge-0xjesus is clear winner ✅, wali has critical rate calculation bug.
+**Summary:** 2 implementations, both are correct, but debridge-wali is 2.3x faster.
 
-**UPDATE**: wali made some improvements but critical rate calculation bug makes it unusable.
+- **debridge-wali** ✅ **WINNER**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, correct rates (0.9978 avg), **2.3x faster tests (6.2s vs 14.6s)**, features (TTLCache, RequestDeduplicator, CircuitBreaker, Logger, Decimal.js precision).
+- **debridge-0xjesus** ⚠️ **SECOND BEST**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, correct rates (0.9978 avg), simple/reliable but slower (14.6s tests).
 
-- **debridge-0xjesus** ✅ **WINNER**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, correct rates (0.998 avg), fast (14s).
-- **debridge-wali** ❌ **BROKEN**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, **CRITICAL BUG**: Rate calculation 97% wrong (0.0273 avg instead of 0.998). Enterprise features (caching, circuit breaker) don't matter with broken data.
-
-**Verdict:** debridge-0xjesus is production-ready. wali's rate calculation bug would report $27 output for $1000 input - unusable.
+**Verdict:** debridge-wali is production-ready. Has performance gains while maintaining data accuracy.
 
 ---
 

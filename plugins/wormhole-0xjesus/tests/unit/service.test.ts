@@ -3,7 +3,7 @@ import type { ProviderSnapshotType } from "@data-provider/shared-contract";
 import type { PluginRegistry } from "every-plugin";
 import { createLocalPluginRuntime } from "every-plugin/testing";
 import { describe, expect, it } from "vitest";
-import pluginDevConfig, { sampleRoute } from "../../plugin.dev";
+import pluginDevConfig, { sampleRoute, testNotionals } from "../../plugin.dev";
 
 function logTestSummary(result: ProviderSnapshotType, testName: string) {
   const uniqueAssets = new Set(
@@ -60,7 +60,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000", "10000"],
+        notionals: testNotionals,
         includeWindows: ["24h", "7d", "30d"]
       })
 
@@ -84,7 +84,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000"],
+        notionals: [testNotionals[0]!],
         includeWindows: ["24h", "7d", "30d"]
       })
 
@@ -136,7 +136,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000", "10000"],
+        notionals: testNotionals,
         includeWindows: ["24h"]
       })
 
@@ -170,7 +170,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000"],
+        notionals: [testNotionals[0]!],
         includeWindows: ["24h"]
       })
 
