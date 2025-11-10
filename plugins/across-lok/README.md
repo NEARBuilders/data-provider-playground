@@ -20,7 +20,7 @@ This plugin implements the standardized `every-plugin` contract to provide:
 ## Installation
 
 ```bash
-cd packages/across-plugin
+cd plugins/across-lok
 bun install
 ```
 
@@ -107,7 +107,6 @@ interface AcrossSuggestedFees {
 **Used For**:
 - Rate quotes with fee breakdown
 - Effective rate calculation (normalized for decimals)
-- Liquidity depth measurement via binary search
 
 ### 3. Deposit Limits
 **Endpoint**: `GET /limits`
@@ -130,21 +129,21 @@ interface AcrossLimits {
 ```
 
 **Used For**:
-- Establishing bounds for liquidity depth search
+- Direct liquidity depth thresholds (50bps and 100bps)
 - Validating transfer amounts
 
 ## How Data is Derived
 
 ### Volume Metrics
 
-**Current Implementation**: Estimated values based on public Dune Analytics data.
+**Current Implementation**: Returns empty array (no fake data).
 
-**Rationale**: Across API doesn't currently expose a public volume statistics endpoint. We provide conservative estimates:
-- 24h: $10M daily volume
-- 7d: $70M weekly volume  
-- 30d: $300M monthly volume
+**Rationale**: Across API doesn't currently expose a public volume statistics endpoint. Per assessment criteria "No Fallbacks - No fake data", we return empty arrays rather than false data.
 
-**TODO**: Update when Across provides an official volume API endpoint.
+**Future**: To get real volume data, integrate with:
+- DefiLlama API: https://api.llama.fi/protocol/across-protocol
+- Dune Analytics: Custom query with API key
+- On-chain aggregation: Query SpokePool events across all chains
 
 ### Rate Quotes
 
@@ -167,35 +166,28 @@ interface AcrossLimits {
 
 ### Liquidity Depth
 
-**Method**: Binary search with incremental quote requests
+**Method**: Direct use of `/limits` endpoint
 
 For each route, we:
-1. Fetch deposit limits to establish search bounds
-2. Get reference rate with a small base amount (1% of max)
-3. Perform binary search to find maximum amounts where slippage ≤ threshold:
-   - **50bps threshold**: Maximum amount with ≤0.5% slippage
-   - **100bps threshold**: Maximum amount with ≤1.0% slippage
-
-**Slippage Calculation**:
-```typescript
-slippageBps = ((baseRate - actualRate) / baseRate) * 10000
-```
+1. Fetch deposit limits from `/limits` endpoint
+2. Map limits to slippage thresholds:
+   - **50bps threshold**: Uses `maxDepositInstant` (instant transfers with minimal slippage)
+   - **100bps threshold**: Uses `maxDepositShortDelay` (short delay transfers with moderate slippage)
 
 **Performance**:
-- Maximum 15 iterations per threshold (prevents excessive API calls)
-- 100ms delay between requests (respects rate limits)
-- Graceful fallback to conservative estimates on errors
+- 1 API call per route (much faster than binary search)
+- No fallback - skips route if limits unavailable (per "No Fallbacks" rule)
 
 ### Available Assets
 
-**Method**: Extract from `/available-routes` response
+**Method**: Extract from `/available-routes` + real blockchain metadata
 
 1. Fetch all available routes
 2. Extract unique assets from origin and destination fields
-3. Infer metadata:
-   - **Symbol**: Mapped from common token addresses (USDC, WETH, etc.)
-   - **Decimals**: 6 for stablecoins, 18 for most ERC-20 tokens
-4. Filter for enabled routes only
+3. Fetch real token metadata from blockchain via RPC calls:
+   - **Symbol**: Real token symbol from ERC-20 contract
+   - **Decimals**: Real decimals from ERC-20 contract
+4. Skip assets where metadata fetch fails (no fake data per "No Fallbacks" rule)
 
 ## Usage
 
@@ -305,7 +297,8 @@ bun run coverage
 1. **Timeout Protection**: Configurable timeout (default 15s) with AbortController
 2. **Graceful Degradation**: 
    - If rate fetch fails, continues with other routes
-   - If liquidity calc fails, provides conservative fallback estimates
+   - If liquidity fetch fails, skips that route (no fake data per "No Fallbacks" rule)
+   - If asset metadata fetch fails, skips that asset (no fake data)
 3. **Detailed Logging**: Console warnings for failed operations with context
 
 ### Common Errors
@@ -338,16 +331,19 @@ bun run build
 ### Project Structure
 
 ```
-across-plugin/
+plugins/across-lok/
 ├── src/
-│   ├── contract.ts          # oRPC contract definition (from template)
+│   ├── contract.ts          # oRPC contract definition (from shared-contract)
 │   ├── service.ts           # Across API client implementation
 │   ├── index.ts             # Plugin initialization and router
-│   └── __tests__/
-│       ├── unit/
-│       │   └── service.test.ts     # Service layer tests with MSW
-│       └── integration/
-│           └── plugin.test.ts      # Full plugin integration tests
+│   └── utils/
+│       ├── tokenMetadata.ts # Real blockchain metadata fetching
+│       └── ...              # Other utility modules
+├── tests/
+│   ├── unit/
+│   │   └── service.test.ts     # Service layer tests with MSW
+│   └── integration/
+│       └── plugin.test.ts      # Full plugin integration tests
 ├── package.json
 ├── README.md
 └── vitest.config.ts
