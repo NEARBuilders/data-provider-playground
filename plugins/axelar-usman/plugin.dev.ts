@@ -7,29 +7,62 @@ import packageJson from './package.json' with { type: 'json' };
 export const sampleRoute = {
   source: {
     chainId: "1",  // Ethereum Mainnet
-    assetId: "0xA0b86a33E6442e082877a094f204b01BF645Fe0",  // USDC on Ethereum
+    assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  // USDC on Ethereum
     symbol: "USDC",
     decimals: 6,
   },
   destination: {
     chainId: "137",  // Polygon
-    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",  // USDC on Polygon
+    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",  // USDC on Polygon
     symbol: "USDC",
     decimals: 6,
   }
 };
 
+export const testRoutes = [
+  {
+    source: {
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "137",
+      assetId: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  },
+  {
+    source: {
+      chainId: "42161",
+      assetId: "0xEB466342C4d449BC9f53A865D5Cb90586f405215",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    destination: {
+      chainId: "1",
+      assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+    }
+  }
+];
+
+export const testNotionals = ["100000000", "1000000000"];
+
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE
-  port: 3015, // Changed from 3014 to avoid conflict with template plugin
+  port: 3014,
   config: {
-    // Axelar-specific configuration
+    // Update these variables to what's required for your plugin
     variables: {
-      baseUrl: "https://api.axelarscan.io/api", // Axelar Scan API
-      timeout: 30000 // Longer timeout for cross-chain data
+      baseUrl: "https://api.axelarscan.io/api/v1",
+      timeout: 10000,
     },
     secrets: {
-      apiKey: process.env.PLUGIN_API_KEY || "" // Axelar API is public, no key required
+      apiKey: ""
     }
   } satisfies PluginConfigInput<typeof Plugin>
 }

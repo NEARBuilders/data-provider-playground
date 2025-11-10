@@ -60,7 +60,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000", "10000"],
+        notionals: ["1000000", "10000000"],
         includeWindows: ["24h", "7d", "30d"]
       })
 
@@ -84,7 +84,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000"],
+        notionals: ["1000000"],
         includeWindows: ["24h", "7d", "30d"]
       })
 
@@ -136,7 +136,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000", "10000"],
+        notionals: ["1000000", "10000000"],
         includeWindows: ["24h"]
       })
 
@@ -170,7 +170,7 @@ describe("DataProviderService", () => {
 
       const result = await client.getSnapshot({
         routes: [sampleRoute],
-        notionals: ["1000"],
+        notionals: ["1000000"],
         includeWindows: ["24h"]
       })
 

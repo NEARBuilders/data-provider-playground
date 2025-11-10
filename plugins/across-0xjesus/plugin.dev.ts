@@ -37,7 +37,7 @@ export const testRoutes = [
   {
     source: {
       chainId: "42161",
-      assetId: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+      assetId: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
       symbol: "USDC",
       decimals: 6,
     },
@@ -50,7 +50,7 @@ export const testRoutes = [
   }
 ];
 
-export const testNotionals = ["1000000", "1000000000000000000"];
+export const testNotionals = ["1000000", "10000000"];
 
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE

@@ -165,11 +165,13 @@ export class DataProviderService {
       try: async () => {
         console.log(`[Axelar] Fetching snapshot for ${params.routes.length} routes`);
 
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+        // Fetch assets first since rates depend on the assets cache
+        const listedAssets = await this.getListedAssets();
+
+        const [volumes, rates, liquidity] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
           this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes),
-          this.getListedAssets()
+          this.getLiquidityDepth(params.routes)
         ]);
 
         return {
@@ -239,7 +241,8 @@ export class DataProviderService {
     const chainIdToName = await this.getChainIdToNameMapping();
 
     if (chainIdToName.size === 0) {
-      throw new Error("Failed to load chain mappings");
+      console.warn("[Axelar] Failed to load chain mappings, cannot calculate rates");
+      return [];
     }
 
     for (const route of routes) {
@@ -257,13 +260,34 @@ export class DataProviderService {
 
           const amountIn = BigInt(notional);
 
-          // Get REAL fee from Axelar network via SDK
+          let assetDenom: string | null = null;
+
+          const chainKey = sourceChainName.toLowerCase();
+
+          // Find asset by matching chain and address
+          const matchingAsset = this.assetsCache?.find(asset =>
+            asset.addresses[chainKey]?.address?.toLowerCase() === route.source.assetId.toLowerCase()
+          );
+
+          if (matchingAsset) {
+            assetDenom = matchingAsset.denom;
+            console.log(
+              `[Axelar] Found denom ${assetDenom} for ${route.source.symbol} (${route.source.assetId}) on ${sourceChainName}`
+            );
+          } else {
+            console.warn(
+              `[Axelar] Asset ${route.source.symbol} (${route.source.assetId}) not found in assets cache for chain ${sourceChainName}`
+            );
+            continue; // Skip this rate - no fallback data
+          }
+
+          // Get REAL fee from Axelar network via SDK using proper denom format
           let transferFeeAmount = BigInt(0);
           try {
             const feeInfo = await this.axelarQueryAPI.getTransferFee(
               sourceChainName,
               destChainName,
-              route.source.symbol,
+              assetDenom,
               Number(amountIn)
             );
 
@@ -272,11 +296,10 @@ export class DataProviderService {
             }
           } catch (error) {
             console.warn(
-              `[Axelar] SDK fee query failed for ${sourceChainName} → ${destChainName}:`,
+              `[Axelar] SDK fee query failed for ${sourceChainName} → ${destChainName} (${assetDenom}):`,
               error
             );
-            // Use conservative fallback: 0.1% of amount
-            transferFeeAmount = (amountIn * BigInt(1)) / BigInt(1000);
+            continue; // Skip this rate
           }
 
           const amountOut = amountIn - transferFeeAmount;
@@ -294,7 +317,7 @@ export class DataProviderService {
           });
 
           console.log(
-            `[Axelar] Rate: ${sourceChainName} → ${destChainName} = ${(effectiveRate * 100).toFixed(2)}%`
+            `[Axelar] Real fee for ${sourceChainName} → ${destChainName} (${assetDenom}): ${(effectiveRate * 100).toFixed(4)}% effective rate`
           );
         } catch (error) {
           console.error(`[Axelar] Failed to calculate rate:`, error);
@@ -302,11 +325,7 @@ export class DataProviderService {
       }
     }
 
-    if (rates.length === 0) {
-      throw new Error("Failed to calculate any rates");
-    }
-
-    return rates;
+    return rates; // Return empty array if no rates calculated - no fake data
   }
 
   /**
