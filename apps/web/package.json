@@ -41,7 +41,7 @@
     "@types/node": "^20",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "every-plugin": "^0.4.4",
+    "every-plugin": "catalog:",
     "tailwindcss": "^4.1.10",
     "typescript": "^5"
   }
