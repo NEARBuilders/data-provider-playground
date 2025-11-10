@@ -29,33 +29,32 @@
 
 **Summary:** 3 implementations, no clear winner. across-0xjesus and across-aniekan are best but both need fixes.
 
-- **across-0xjesus** ⚠️ **BEST OPTION**: Uses official APIs (`/limits`, `/suggested-fees`, `/swap/tokens`), DefiLlama volumes. **Issue:** Duplicate assets
+**UPDATE**: 0xjesus has updated to deduplicate assets and fixed test configurations. All issues resolved.
+
+- **across-0xjesus** ✅ **WINNER**: Official Across APIs (`/limits`, `/suggested-fees`, `/swap/tokens`), DefiLlama volumes ($22.3M/24h), 1,278 unique assets. All tests pass, proper native USDC support post-CCTP migration.
 - **across-aniekan** ⚠️ **SECOND BEST**: Official APIs for rates/assets, works in integration tests. **Issue:** Hardcoded decimals, missing `/limits`
 - **across-lok** ❌ **BROKEN**: Returns 0 assets, multiple API failures, binary search isn't necessary because of `/limits`.
-
-**Recommended Solution:** Combine across-0xjesus (fix duplicates) + across-aniekan (add `/limits` integration)
 
 ---
 
 ## Axelar Protocol
 
-**Summary:** 1 implementation (axelar-0xjesus) - tests pass but heavily uses hardcoded fallbacks ❌
+**Summary:** 2 implementations - axelar-usman is clear winner ✅, uses official Axelarscan APIs exclusively with no fallbacks
 
-**Issues:**
+**UPDATE**: usman implementation uses official Axelarscan APIs for all data sources, proper SDK integration with denom conversion, and no fallback data. 0xjesus implementation has critical parsing failures and is not production-ready.
 
-- ❌ Broken asset/chain parsing (0 real assets extracted, falls back to hardcoded)
-- ❌ SDK fee calculations fail ("Asset usdc not found")
-- ❌ Extensive hardcoded fallbacks violate "no fake data" rule
+- **axelar-usman** ✅ **WINNER**: Official Axelarscan APIs (`/getChains`, `/getAssets`, `/token/transfersTotalVolume`, `/getTVL`), AxelarJS SDK with proper denom conversion, real volumes ($3,942/24h), 1,910 assets, all tests pass, no fallback data
+- **axelar-0xjesus** ❌ **BROKEN**: Critical asset/chain parsing failures (0 assets extracted), SDK fee calculations fail, extensive hardcoded fallbacks violate "no fake data" rule
 
-**What Works:** Real volumes from Axelarscan API ($27K/24h), proper architecture
-
-**Verdict:** Good foundation, needs major fixes to parsing/API integration before production use.
+**Verdict:** axelar-usman is production-ready. Good implementation of official Axelar APIs with proper SDK integration.
 
 ---
 
 ## CCTP Protocol
 
 **Summary:** 3 implementations - cctp-0xjesus is clear winner ✅
+
+**UPDATE**: 0xjesus has added a cBridge plugin
 
 - **cctp-0xjesus** ✅ **WINNER**: Official Circle APIs, real volumes ($5.9M/24h), all tests pass, proper rate limiting
 - **cctp-kyler** ❌ **NOT VIABLE**: Graph is clever solution, but Circle APIs are good enough, returns 0 volumes
@@ -67,18 +66,22 @@
 
 ## LayerZero Protocol
 
-**Summary:** 2 implementations - layerzero-0xjesus could be easily fixable, but layerzero-himanshu might also be a good option if they can get it to work.
+**Summary:** 2 implementations - layerzero-0xjesus is now production-ready with real volume data.
 
-- **layerzero-0xjesus** ⚠️ **BEST OPTION**: Official Stargate APIs, proper architecture, binary search for liquidity. **Issue:** Early `return []` statements make code unreachable
+**UPDATE**: Fixed volume estimation bug - now uses DefiLlama Bridges API for real Stargate transaction volumes ($22.9M/24h, $234M/7d, $842M/30d).
+
+- **layerzero-0xjesus** ✅ **WINNER**: Official Stargate APIs (`/chains`, `/tokens`, `/quotes`), DefiLlama Bridges API volumes, binary search liquidity, proper rate limiting. All tests pass, no fake data.
 - **layerzero-himanshu** ❌ **BROKEN**: All tests fail, poor error handling, wrong volume calculations
 
-**Verdict:** layerzero-0xjesus has better foundation - removing early returns could make it work.
+**Verdict:** layerzero-0xjesus is production-ready. Excellent implementation with real data sources.
 
 ---
 
 ## LiFi Protocol
 
 **Summary:** 3 implementations - lifi-posma is best option but needs fixes. All implementations are pretty slow.
+
+**UPDATE**: 0xjesus has updated to have a moving window for volume. Posma also did an update which may fix the issues.
 
 - **lifi-posma** ✅ **BEST OPTION**: Official Li.Fi v2 API with pagination, real volumes ($13.3M/24h), 11,210 assets. **Issues:** 7d/30d timeouts, rate limiting
 - **lifi-misbah** ⚠️ **INCOMPLETE**: Official API but only 1000 transfers (10% of volume), test timeouts
@@ -90,12 +93,26 @@
 
 ## deBridge Protocol
 
-**Summary:** 2 implementations - debridge-0xjesus is winner ✅, has a very small issue that can be easily fixed.
+**Summary:** 2 implementations - debridge-0xjesus is clear winner ✅, wali has critical rate calculation bug.
 
-- **debridge-0xjesus** ✅ **WINNER**: Official DLN APIs, real volumes ($316K/24h), 7,862 assets, fast (25s). **Issue:** Integration test uses $10M (exceeds $5.5M API limit)
-- **debridge-wali** ❌ **ALL FALLBACK DATA**: Hardcoded volume fallbacks ($3M/24h), only 9 assets, slow (> 68s)
+**UPDATE**: wali made some improvements but critical rate calculation bug makes it unusable.
 
-**Verdict:** debridge-0xjesus production-ready with simple test amount fix.
+- **debridge-0xjesus** ✅ **WINNER**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, correct rates (0.998 avg), fast (14s).
+- **debridge-wali** ❌ **BROKEN**: Official DLN APIs, real volumes ($13.6M/24h), 7,863 assets, **CRITICAL BUG**: Rate calculation 97% wrong (0.0273 avg instead of 0.998). Enterprise features (caching, circuit breaker) don't matter with broken data.
+
+**Verdict:** debridge-0xjesus is production-ready. wali's rate calculation bug would report $27 output for $1000 input - unusable.
+
+---
+
+## cBridge Protocol (Celer Network)
+
+**Summary:** 1 implementation - cbridge-0xjesus is solid but volume data unavailable due to unmaintained official API.
+
+**UPDATE**: Implementation uses official cBridge APIs correctly, but volume statistics API is stale since 2021. Protocol functionality works perfectly.
+
+- **cbridge-0xjesus** ⚠️ **ACCEPTABLE**: Official cBridge APIs (`v2/getTransferConfigsForAll`, `v2/estimateAmt`), 855 assets, working rate quotes (0.9999 avg rate), liquidity measurement. **Critical Issue:** Volume API (`cbridge-stat.s3`) frozen since Dec 2021 - returns $0 for all periods. Protocol is active but statistics unmaintained.
+
+**Verdict:** Good, maybe use DefiLlama for volume
 
 ---
 

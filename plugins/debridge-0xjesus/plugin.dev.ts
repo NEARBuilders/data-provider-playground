@@ -50,7 +50,7 @@ export const testRoutes = [
   }
 ];
 
-export const testNotionals = ["1000000", "10000000"];
+export const testNotionals = ["100000000", "1000000000"];
 
 export default {
   pluginId: packageJson.name, // DO NOT CHANGE

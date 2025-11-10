@@ -276,13 +276,7 @@ export class DataProviderService {
     for (const route of routes) {
       for (const notional of notionals) {
         try {
-          const atomicAmount = this.toAtomicAmount(notional, route.source.decimals);
-          if (!atomicAmount) {
-            console.warn(
-              `[deBridge] Skipping notional "${notional}" for ${route.source.symbol} -> ${route.destination.symbol}: invalid amount`,
-            );
-            continue;
-          }
+          const atomicAmount = notional;
 
           const quote = await this.fetchQuoteWithRetry(route.source, route.destination, atomicAmount);
           const estimation = quote?.estimation;
@@ -300,8 +294,8 @@ export class DataProviderService {
             continue;
           }
 
-          const amountInNormalized = this.normalizeTokenAmount(amountInRaw, srcToken.decimals);
-          const amountOutNormalized = this.normalizeTokenAmount(amountOutRaw, dstToken.decimals);
+          const amountInNormalized = this.normalizeTokenAmount(amountInRaw, srcToken.decimals ?? 18);
+          const amountOutNormalized = this.normalizeTokenAmount(amountOutRaw, dstToken.decimals ?? 18);
 
           if (amountInNormalized === null || amountInNormalized === 0 || amountOutNormalized === null) {
             continue;
@@ -628,7 +622,7 @@ export class DataProviderService {
 
       if (attempt < this.MAX_RETRIES - 1) {
         const delay =
-          status === 429 ? Math.max(this.RETRY_DELAYS[attempt], 10_000) : this.RETRY_DELAYS[attempt];
+          status === 429 ? Math.max(this.RETRY_DELAYS[attempt] ?? 0, 10_000) : this.RETRY_DELAYS[attempt];
         const message = error instanceof Error ? error.message : String(error);
         console.warn(
           `[deBridge] Request failed (attempt ${attempt + 1}): ${url} - ${message}`,
@@ -691,7 +685,7 @@ export class DataProviderService {
       return null;
     }
 
-    const [wholePartRaw, fractionRaw = ""] = parts;
+    const [wholePartRaw = "", fractionRaw = ""] = parts;
     const wholePart = wholePartRaw.replace(/^0+(?=\d)/, "");
     const fraction = fractionRaw.slice(0, decimals);
 
