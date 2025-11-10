@@ -6,20 +6,20 @@ import { contract } from "./contract";
 import { DataProviderService } from "./service";
 
 /**
- * Li.Fi Bridge Data Provider Plugin
+ * cBridge Data Provider Plugin - Collects cross-chain bridge metrics from cBridge.
  *
- * Collects and normalizes cross-chain bridge metrics from Li.Fi aggregator.
- * Li.Fi aggregates multiple bridges (Hop, Connext, Across, etc.) and DEXes.
+ * This plugin implements the data provider contract for cBridge (Celer Network).
+ * API Documentation: https://cbridge-docs.celer.network/developer/api-reference
+ *
  */
 export default createPlugin({
   variables: z.object({
-    baseUrl: z.string().url().default("https://li.quest/v1"),
-    timeout: z.number().min(1000).max(60000).default(15000),
-    maxRequestsPerSecond: z.number().min(1).max(100).default(10),
+    baseUrl: z.string().url().default("https://cbridge-prod2.celer.app"),
+    timeout: z.number().min(1000).max(60000).default(30000),
   }),
 
   secrets: z.object({
-    apiKey: z.string().default("not-required"),
+    apiKey: z.string().optional().default(""),
   }),
 
   contract,
@@ -30,8 +30,7 @@ export default createPlugin({
       const service = new DataProviderService(
         config.variables.baseUrl,
         config.secrets.apiKey,
-        config.variables.timeout,
-        config.variables.maxRequestsPerSecond
+        config.variables.timeout
       );
 
       // Test the connection during initialization
@@ -47,17 +46,10 @@ export default createPlugin({
 
     return {
       getSnapshot: builder.getSnapshot.handler(async ({ input }) => {
-        try {
-          const snapshot = await Effect.runPromise(
-            service.getSnapshot(input)
-          );
-          return snapshot;
-        } catch (error) {
-          // Log only the error message to avoid Next.js error formatting crash
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error('[Plugin] getSnapshot error:', errorMsg);
-          throw error instanceof Error ? error : new Error(String(error));
-        }
+        const snapshot = await Effect.runPromise(
+          service.getSnapshot(input)
+        );
+        return snapshot;
       }),
 
       ping: builder.ping.handler(async () => {

@@ -106,12 +106,29 @@ interface LiFiTool {
   supportedChains: number[];
 }
 
-interface DefiLlamaBridgeResponse {
-    id: string;
-    displayName: string;
-    lastDailyVolume: number;
-    lastWeeklyVolume: number;
-    lastMonthlyVolume: number;
+interface LiFiTransfer {
+  id: string;
+  sending: {
+    amount: string;
+    amountUSD: string;
+    token: LiFiToken;
+    chainId: number;
+    txHash: string;
+  };
+  receiving: {
+    amount: string;
+    amountUSD: string;
+    token: LiFiToken;
+    chainId: number;
+    txHash?: string;
+  };
+  status: string;
+  tool: string;
+  timestamp: number;
+}
+
+interface LiFiAnalyticsResponse {
+  transfers: LiFiTransfer[];
 }
 
 class RateLimiter {
@@ -153,15 +170,13 @@ export class DataProviderService {
   private tokens: Map<number, LiFiToken[]> | null = null;
   private tools: { bridges: LiFiTool[], exchanges: LiFiTool[] } | null = null;
 
-  private readonly LIFI_LLAMA_ID = "lifi";
-  private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
+  private volumeCache: { data: Map<string, number> | null; fetchedAt: number } | null = null;
   private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAYS = [1000, 2000, 4000];
 
   constructor(
     private readonly baseUrl: string,
-    private readonly defillamaBaseUrl: string,
     private readonly apiKey: string,
     private readonly timeout: number,
     maxRequestsPerSecond: number = 10
@@ -205,27 +220,22 @@ export class DataProviderService {
 
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
     try {
-      const bridgeData = await this.fetchDefiLlamaVolumes();
-      if (!bridgeData) {
-        console.warn("[Li.Fi] No volume data available from DefiLlama");
+      const volumeData = await this.fetchLiFiVolumes();
+      if (!volumeData) {
+        console.warn("[Li.Fi] No volume data available from LiFi Analytics");
         return [];
       }
       const volumes: VolumeWindowType[] = [];
       const now = new Date().toISOString();
       for (const window of windows) {
-        let volumeUsd: number | undefined;
-        switch (window) {
-          case "24h": volumeUsd = bridgeData.lastDailyVolume; break;
-          case "7d": volumeUsd = bridgeData.lastWeeklyVolume; break;
-          case "30d": volumeUsd = bridgeData.lastMonthlyVolume; break;
-        }
+        const volumeUsd = volumeData.get(window);
         if (volumeUsd !== undefined) {
           volumes.push({ window, volumeUsd, measuredAt: now });
         }
       }
       return volumes;
     } catch (error) {
-      console.error("[Li.Fi] Failed to fetch volumes from DefiLlama:", error);
+      console.error("[Li.Fi] Failed to fetch volumes from LiFi Analytics:", error);
       return [];
     }
   }
@@ -446,18 +456,62 @@ export class DataProviderService {
     }
   }
 
-  private async fetchDefiLlamaVolumes(): Promise<DefiLlamaBridgeResponse | null> {
+  private async fetchLiFiVolumes(): Promise<Map<string, number> | null> {
     if (this.volumeCache && (Date.now() - this.volumeCache.fetchedAt) < this.VOLUME_CACHE_TTL) {
       return this.volumeCache.data;
     }
-    const url = `${this.defillamaBaseUrl}/bridge/${this.LIFI_LLAMA_ID}`;
+
+    const now = Date.now();
+    const volumes = new Map<string, number>();
+
+    // Define time windows in milliseconds
+    const windows = {
+      "24h": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+    };
+
     try {
-      const response = await this.fetchWithRetry(url);
-      const data: DefiLlamaBridgeResponse = await response.json();
-      this.volumeCache = { data, fetchedAt: Date.now() };
-      return data;
+      // Fetch transfers for the longest window (30d) to aggregate all data at once
+      const fromTimestamp = Math.floor((now - windows["30d"]) / 1000);
+      const toTimestamp = Math.floor(now / 1000);
+
+      const url = new URL(`${this.baseUrl}/analytics/transfers`);
+      url.searchParams.set('fromTimestamp', fromTimestamp.toString());
+      url.searchParams.set('toTimestamp', toTimestamp.toString());
+
+      const headers: HeadersInit = { 'Accept': 'application/json' };
+      if (this.apiKey && this.apiKey !== 'not-required') {
+        headers['x-lifi-api-key'] = this.apiKey;
+      }
+
+      const response = await this.fetchWithRetry(url.toString(), { headers });
+      const data: LiFiAnalyticsResponse = await response.json();
+
+      if (!data.transfers || data.transfers.length === 0) {
+        console.warn('[Li.Fi] No transfer data available from analytics API');
+        this.volumeCache = { data: null, fetchedAt: Date.now() };
+        return null;
+      }
+
+      // Calculate volumes for each window
+      for (const [window, windowMs] of Object.entries(windows)) {
+        const windowStartTimestamp = (now - windowMs) / 1000;
+
+        const volumeUsd = data.transfers
+          .filter(transfer => transfer.timestamp >= windowStartTimestamp)
+          .reduce((sum, transfer) => {
+            const amountUsd = parseFloat(transfer.sending.amountUSD || "0");
+            return sum + amountUsd;
+          }, 0);
+
+        volumes.set(window, volumeUsd);
+      }
+
+      this.volumeCache = { data: volumes, fetchedAt: Date.now() };
+      return volumes;
     } catch (error) {
-      console.error(`[Li.Fi] DefiLlama request failed: ${url}`, error);
+      console.error(`[Li.Fi] Analytics API request failed:`, error);
       return null;
     }
   }
