@@ -103,85 +103,33 @@ interface AxelarTVLResponse {
   }>;
 }
 
-const FALLBACK_CHAINS: AxelarChain[] = [
-  {
-    id: "ethereum",
-    chain_id: 1,
-    chain_name: "ethereum",
-    name: "Ethereum",
-    chain_type: "evm",
-    native_token: {
-      symbol: "ETH",
-      name: "Ether",
-      decimals: 18,
-    },
-  },
-  {
-    id: "polygon",
-    chain_id: 137,
-    chain_name: "polygon",
-    name: "Polygon",
-    chain_type: "evm",
-    native_token: {
-      symbol: "MATIC",
-      name: "MATIC",
-      decimals: 18,
-    },
-  },
-  {
-    id: "arbitrum",
-    chain_id: 42161,
-    chain_name: "arbitrum",
-    name: "Arbitrum One",
-    chain_type: "evm",
-    native_token: {
-      symbol: "ETH",
-      name: "Ether",
-      decimals: 18,
-    },
-  },
-];
+interface DefiLlamaBridgeResponse {
+  id: number;
+  name: string;
+  displayName: string;
+  lastDailyVolume: number;
+  weeklyVolume: number;
+  monthlyVolume: number;
+  currentDayVolume: number;
+  dayBeforeLastVolume: number;
+}
 
-const FALLBACK_VOLUMES_USD: Record<"24h" | "7d" | "30d", number> = {
-  "24h": 1_750_000,
-  "7d": 9_800_000,
-  "30d": 28_500_000,
-};
-
-const FALLBACK_LISTED_ASSETS: AssetType[] = [
-  {
-    chainId: "1",
-    assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    symbol: "USDC",
-    decimals: 6,
-  },
-  {
-    chainId: "137",
-    assetId: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa8417",
-    symbol: "USDC",
-    decimals: 6,
-  },
-  {
-    chainId: "42161",
-    assetId: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
-    symbol: "USDC",
-    decimals: 6,
-  },
-];
+// NO FALLBACK DATA - Return empty arrays per requirements
 
 /**
  * Data Provider Service for Axelar
  *
  * Axelar is a message passing protocol that enables cross-chain transfers.
  * This service uses REAL DATA from:
- * - Axelarscan REST API (volumes, transfers, assets, TVL)
+ * - DefiLlama Bridges API (volume data)
+ * - Axelarscan REST API (transfers, assets, TVL)
  * - AxelarJS SDK (fee estimates)
  *
  * Key features:
- * - Real-time data from Axelar network
+ * - Real-time data from Axelar network and DefiLlama
  * - Rate limiting: 10 requests/second (configurable via ENV)
  * - Exponential backoff: 1s, 2s, 4s on errors
- * - No API key required (public API)
+ * - No API key required (public APIs)
  */
 export class DataProviderService {
   private rateLimiter: RateLimiter;
@@ -248,8 +196,8 @@ export class DataProviderService {
   }
 
   /**
-   * Get volume metrics for Axelar bridge using REAL DATA from Axelarscan API.
-   * Uses POST /token/transfersTotalVolume endpoint with time windows.
+   * Get volume metrics for Axelar bridge using REAL DATA from DefiLlama Bridges API.
+   * Uses DefiLlama instead of Axelarscan for more reliable volume data.
    */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
     const volumes: VolumeWindowType[] = [];
@@ -267,19 +215,18 @@ export class DataProviderService {
     for (const window of windows) {
       const range = timeRanges[window];
       try {
-        const volumeUsd = await this.fetchTransferVolumeWithRetry(range.fromTime, range.toTime);
+        const volumeUsd = await this.fetchTransferVolumeWithRetry(range.fromTime, range.toTime, window);
         volumes.push({
           window,
           volumeUsd,
           measuredAt,
         });
-        console.log(`[Axelar] Real volume for ${window}: $${volumeUsd.toLocaleString()}`);
       } catch (error) {
-        console.error(`[Axelar] Failed to fetch volume for ${window}:`, error);
-        // Fallback to 0 instead of failing completely
+        console.error(`[DefiLlama] Failed to fetch Axelar volume for ${window}:`, error);
+        // Return 0 if API call fails - no fake data
         volumes.push({
           window,
-          volumeUsd: FALLBACK_VOLUMES_USD[window] ?? 0,
+          volumeUsd: 0,
           measuredAt,
         });
       }
@@ -309,15 +256,27 @@ export class DataProviderService {
       }
     });
 
-    // Fallback mappings for common chains if API fails
+    // No fallback mappings - if API fails, return empty array
     if (chainIdToName.size === 0) {
-      console.warn('[Axelar] No chains from API, using fallback mappings');
-      chainIdToName.set('1', 'ethereum');
-      chainIdToName.set('137', 'polygon');
-      chainIdToName.set('56', 'binance');
-      chainIdToName.set('43114', 'avalanche');
-      chainIdToName.set('42161', 'arbitrum');
-      chainIdToName.set('10', 'optimism');
+      console.warn('[Axelar] No chains from API, cannot calculate rates');
+      return [];
+    }
+
+    // Map to convert symbols to Axelar denoms
+    const symbolToDenom: Record<string, string> = {
+      'usdc': 'uausdc',
+      'usdt': 'uusdt',
+      'eth': 'weth-wei',
+      'weth': 'weth-wei',
+      'wbtc': 'wbtc-satoshi',
+      'dai': 'dai-wei',
+      'axl': 'uaxl',
+      'frax': 'frax-wei',
+      'matic': 'wmatic-wei',
+      'link': 'link-wei',
+      'aave': 'aave-wei',
+      'apt': 'uapt',
+      'ape': 'ape-wei',
     }
 
     for (const route of routes) {
@@ -334,6 +293,9 @@ export class DataProviderService {
             continue;
           }
 
+          // Convert symbol to Axelar denom format
+          const assetDenom = symbolToDenom[route.source.symbol.toLowerCase()] || route.source.symbol.toLowerCase();
+
           // Get real transfer fee from Axelar network via SDK
           // Note: getTransferFee returns fee in the asset's base denom
           let transferFeeAmount = BigInt(0);
@@ -341,7 +303,7 @@ export class DataProviderService {
             const feeInfo = await this.axelarQueryAPI.getTransferFee(
               sourceChainName,
               destChainName,
-              route.source.symbol.toLowerCase(), // Asset denom
+              assetDenom, // Use proper Axelar denom
               Number(amountIn)
             );
 
@@ -349,9 +311,9 @@ export class DataProviderService {
               transferFeeAmount = BigInt(feeInfo.fee.amount);
             }
           } catch (error) {
-            console.warn(`[Axelar] SDK fee query failed, using 0.1% estimate:`, error);
-            // Fallback to 0.1% if SDK call fails
-            transferFeeAmount = (amountIn * BigInt(10)) / BigInt(10000);
+            console.warn(`[Axelar] SDK fee query failed for ${assetDenom}:`, error);
+            // No fallback - skip this rate if fee calculation fails
+            continue;
           }
 
           // For Axelar, output is 1:1 minus transfer fee (bridging same token)
@@ -413,40 +375,8 @@ export class DataProviderService {
         const tvlData = await this.fetchTVLWithRetry(assetDenom);
 
         if (!tvlData) {
-          console.warn(`[Axelar] No TVL data for ${assetDenom}, using fallback liquidity estimates`);
-          // Fallback to estimated TVL based on typical Axelar capacities
-          const fallbackTVL: Record<string, number> = {
-            'uausdc': 100_000_000, // $100M
-            'uusdt': 50_000_000,   // $50M
-            'weth-wei': 30_000_000, // $30M equivalent
-            'wbtc-satoshi': 20_000_000, // $20M equivalent
-            'dai-wei': 10_000_000,  // $10M
-          };
-          const tvl = fallbackTVL[assetDenom] || 5_000_000;
-
-          const liq50bps = tvl * 0.5;
-          const liq100bps = tvl * 0.75;
-
-          const decimals = route.source.decimals;
-          const multiplier = BigInt(10 ** decimals);
-
-          liquidity.push({
-            route: {
-              source: route.source,
-              destination: route.destination,
-            },
-            thresholds: [
-              {
-                slippageBps: 50,
-                maxAmountIn: (BigInt(Math.floor(liq50bps)) * multiplier).toString(),
-              },
-              {
-                slippageBps: 100,
-                maxAmountIn: (BigInt(Math.floor(liq100bps)) * multiplier).toString(),
-              },
-            ],
-            measuredAt: new Date().toISOString(),
-          });
+          console.warn(`[Axelar] No TVL data for ${assetDenom}, skipping liquidity for this route`);
+          // No fake data - skip this route
           continue;
         }
 
@@ -516,16 +446,29 @@ export class DataProviderService {
       for (const asset of axelarAssets) {
         // For each chain where the asset is available
         if (!asset.addresses || typeof asset.addresses !== 'object') {
+          console.log(`[Axelar] Asset ${asset.symbol || asset.id} has no addresses object, skipping`);
           continue;
         }
 
-        for (const [chainKey, addressInfo] of Object.entries(asset.addresses)) {
+        const addressEntries = Object.entries(asset.addresses);
+        if (addressEntries.length === 0) {
+          console.log(`[Axelar] Asset ${asset.symbol || asset.id} has empty addresses, skipping`);
+          continue;
+        }
+
+        for (const [chainKey, addressInfo] of addressEntries) {
+          if (!addressInfo || typeof addressInfo !== 'object') {
+            console.log(`[Axelar] Invalid addressInfo for ${asset.symbol} on ${chainKey}`);
+            continue;
+          }
+
           // Find the chain by matching the chainKey (e.g., "ethereum", "polygon")
-          const chain = chains.find(c => c.id === chainKey || c.chain_name === chainKey);
+          const chain = chains.find(c =>
+            c && (c.id === chainKey || c.chain_name === chainKey)
+          );
 
           if (!chain) {
-            // If no match, try to create asset anyway with the info we have
-            console.log(`[Axelar] Chain not found for key: ${chainKey}, skipping`);
+            console.log(`[Axelar] Chain not found for key: ${chainKey}, skipping asset ${asset.symbol}`);
             continue;
           }
 
@@ -537,41 +480,45 @@ export class DataProviderService {
             continue;
           }
 
+          // Ensure we have valid decimals
+          const decimals = asset.decimals;
+          if (typeof decimals !== 'number' || decimals < 0) {
+            console.log(`[Axelar] Invalid decimals for ${asset.symbol}: ${decimals}`);
+            continue;
+          }
+
+          // Ensure chain_id is valid
+          if (chain.chain_id === undefined || chain.chain_id === null) {
+            console.log(`[Axelar] Chain ${chainKey} has no chain_id`);
+            continue;
+          }
+
           assets.push({
             chainId: chain.chain_id.toString(),
             assetId: assetId,
             symbol: addressInfo.symbol || asset.symbol,
-            decimals: asset.decimals,
+            decimals: decimals,
           });
+
+          console.log(`[Axelar] Successfully parsed: ${asset.symbol} on chain ${chain.name} (${chain.chain_id})`);
         }
       }
 
       console.log(`[Axelar] Fetched ${assets.length} real assets from ${axelarAssets.length} base assets`);
 
-      // If no assets were successfully parsed, provide fallback assets
-      if (assets.length === 0) {
-        console.warn('[Axelar] No assets parsed from API, using fallback assets');
-        return this.getFallbackListedAssets();
-      }
-
+      // No fake data - return empty array if nothing parsed
       return {
         assets,
         measuredAt: new Date().toISOString(),
       };
     } catch (error) {
       console.error('[Axelar] Failed to fetch assets from API:', error);
-      return this.getFallbackListedAssets();
+      // No fake data - return empty array on error
+      return {
+        assets: [],
+        measuredAt: new Date().toISOString(),
+      };
     }
-  }
-
-  /**
-   * Provide a static set of popular Axelar assets when the API is unreachable.
-   */
-  private getFallbackListedAssets(): ListedAssetsType {
-    return {
-      assets: FALLBACK_LISTED_ASSETS,
-      measuredAt: new Date().toISOString(),
-    };
   }
 
   /**
@@ -610,8 +557,8 @@ export class DataProviderService {
 
         // Handle case where API returns null/undefined or no data
         if (!chains || (Array.isArray(chains) && chains.length === 0)) {
-          console.warn('[Axelar] API returned no chains, falling back to bundled list');
-          this.chainsCache = FALLBACK_CHAINS;
+          console.warn('[Axelar] API returned no chains');
+          this.chainsCache = [];
           return this.chainsCache;
         }
 
@@ -633,8 +580,9 @@ export class DataProviderService {
       }
     }
 
-    console.warn("[Axelar] Using fallback chain data after failed fetch attempts:", lastError?.message);
-    this.chainsCache = FALLBACK_CHAINS;
+    console.warn("[Axelar] Failed to fetch chains after retries:", lastError?.message);
+    // No fake data - return empty array
+    this.chainsCache = [];
     return this.chainsCache;
   }
 
@@ -700,9 +648,14 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch transfer volume from Axelarscan API with retry logic
+   * Fetch transfer volume from DefiLlama Bridges API with retry logic.
+   * Uses DefiLlama instead of Axelarscan because Axelarscan volume endpoint
+   * requires additional parameters and is less reliable.
+   *
+   * @param window - Time window: "24h", "7d", or "30d"
+   * @returns Volume in USD for the specified window
    */
-  private async fetchTransferVolumeWithRetry(fromTime: number, toTime: number): Promise<number> {
+  private async fetchTransferVolumeWithRetry(fromTime: number, toTime: number, window: "24h" | "7d" | "30d"): Promise<number> {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
@@ -712,15 +665,14 @@ export class DataProviderService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        const url = `${this.baseUrl.replace('/api/v1', '')}/token/transfersTotalVolume`;
+        // Use DefiLlama Bridges API for Axelar volume data (ID: 17)
+        const url = `https://bridges.llama.fi/bridge/17`;
 
         const response = await fetch(url, {
-          method: "POST",
+          method: "GET",
           headers: {
             "Accept": "application/json",
-            "Content-Type": "application/json",
           },
-          body: JSON.stringify({ fromTime, toTime }),
           signal: controller.signal,
         });
 
@@ -730,12 +682,27 @@ export class DataProviderService {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const data = await response.json();
-        const volume = typeof data === 'object' && 'value' in data ? data.value : data;
-        return Number(volume) || 0;
+        const data = await response.json() as DefiLlamaBridgeResponse;
+
+        // Map time window to the appropriate field in the response
+        let volumeUsd = 0;
+        switch (window) {
+          case "24h":
+            volumeUsd = data.lastDailyVolume || 0;
+            break;
+          case "7d":
+            volumeUsd = data.weeklyVolume || 0;
+            break;
+          case "30d":
+            volumeUsd = data.monthlyVolume || 0;
+            break;
+        }
+
+        console.log(`[DefiLlama] Real Axelar volume for ${window}: $${volumeUsd.toLocaleString()}`);
+        return volumeUsd;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[Axelar] Volume fetch attempt ${attempt + 1} failed:`, lastError.message);
+        console.error(`[DefiLlama] Volume fetch attempt ${attempt + 1} failed:`, lastError.message);
 
         if (attempt < this.MAX_RETRIES - 1) {
           await new Promise((resolve) => setTimeout(resolve, this.RETRY_DELAYS[attempt]));
@@ -743,7 +710,7 @@ export class DataProviderService {
       }
     }
 
-    throw lastError || new Error("Failed to fetch volume");
+    throw lastError || new Error("Failed to fetch volume from DefiLlama");
   }
 
   /**

@@ -15,7 +15,7 @@ import { DataProviderService } from "./service";
  */
 export default createPlugin({
   variables: z.object({
-    baseUrl: z.string().url().default("https://api.axelarscan.io/api/v1"),
+    baseUrl: z.string().url().default("https://api.axelarscan.io/api"),
     timeout: z.number().min(1000).max(60000).default(10000),
   }),
 

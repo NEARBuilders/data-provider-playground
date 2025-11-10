@@ -59,7 +59,6 @@ export default {
     // Update these variables to what's required for your plugin
     variables: {
       baseUrl: "https://li.quest/v1",
-      defillamaBaseUrl: "https://bridges.llama.fi",
       timeout: 15000,
       maxRequestsPerSecond: 10,
     },

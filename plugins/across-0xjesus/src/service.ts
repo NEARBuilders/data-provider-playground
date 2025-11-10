@@ -406,8 +406,18 @@ export class DataProviderService {
         decimals: token.decimals,
       }));
 
+      // Deduplicate assets based on (chainId, assetId) pairs
+      // The API may return duplicate tokens, so we need to ensure uniqueness
+      const uniqueAssets = Array.from(
+        new Map(
+          assets.map(asset => [`${asset.chainId}:${asset.assetId}`, asset])
+        ).values()
+      );
+
+      console.log(`[Across] Deduplicated ${assets.length} assets to ${uniqueAssets.length} unique assets`);
+
       return {
-        assets,
+        assets: uniqueAssets,
         measuredAt: new Date().toISOString(),
       };
     } catch (error) {
