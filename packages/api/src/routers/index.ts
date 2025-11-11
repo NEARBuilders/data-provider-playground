@@ -1,8 +1,8 @@
+import { Asset, ProviderSnapshot } from "@data-provider/shared-contract";
 import type { RouterClient } from "@orpc/server";
 import { os } from "@orpc/server";
 import { z } from "every-plugin/zod";
 import { plugins } from "../plugins";
-import { Asset, ProviderSnapshot } from "@data-provider/shared-contract";
 
 export const router = {
 	health: os
@@ -13,13 +13,14 @@ export const router = {
 
 	// Individual provider access
 	providers: {
-		axelar: os.prefix('/providers/axelar').router(plugins.axelar.router),
-		layerzero: os.prefix('/providers/layerzero').router(plugins.layerzero.router),
-		cctp: os.prefix('/providers/cctp').router(plugins.cctp.router),
 		across: os.prefix('/providers/across').router(plugins.across.router),
-		debridge: os.prefix('/providers/debridge').router(plugins.debridge.router),
-		lifi: os.prefix('/providers/lifi').router(plugins.lifi.router),
-		wormhole: os.prefix('/providers/wormhole').router(plugins.wormhole.router),
+		// axelar: os.prefix('/providers/axelar').router(plugins.axelar.router),
+		// cbridge: os.prefix('/providers/ccbridgectp').router(plugins.cbridge.router),
+		// cctp: os.prefix('/providers/cctp').router(plugins.cctp.router),
+		// debridge: os.prefix('/providers/debridge').router(plugins.debridge.router),
+		// layerzero: os.prefix('/providers/layerzero').router(plugins.layerzero.router),
+		// lifi: os.prefix('/providers/lifi').router(plugins.lifi.router),
+		// wormhole: os.prefix('/providers/wormhole').router(plugins.wormhole.router),
 	},
 
 	// Aggregated snapshot with optional provider filter

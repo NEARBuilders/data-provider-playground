@@ -19,7 +19,7 @@ export const testNotionals = ["100000000", "1000000000"];
 
 export default {
   pluginId: "@data-provider/cbridge",
-  port: 3014,
+  port: 3021,
   config: {
     variables: {
       baseUrl: process.env.CBRIDGE_BASE_URL || "https://cbridge-prod2.celer.app",
