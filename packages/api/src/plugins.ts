@@ -3,7 +3,7 @@ import { createPluginRuntime } from "every-plugin";
 
 declare module "every-plugin" {
   interface RegisteredPlugins {
-    "across": typeof DataProviderTemplatePlugin;
+    "@data-provider/across": typeof DataProviderTemplatePlugin;
     // "axelar": typeof DataProviderTemplatePlugin;
     // "cbridge": typeof DataProviderTemplatePlugin;
     // "cctp": typeof DataProviderTemplatePlugin;
@@ -17,7 +17,7 @@ declare module "every-plugin" {
 // Plugin URLs - hardcoded for cleanliness since these are deployment artifacts
 const PLUGIN_URLS = {
   production: {
-    across: "https://elliot-braem-412-data-provider-across-0xjesus-dat-db76f08db-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/across": "https://elliot-braem-412-data-provider-across-0xjesus-dat-db76f08db-ze.zephyrcloud.app/remoteEntry.js",
     // axelar: "https://elliot-braem-403-data-provider-axelar-usman-data--4c705eff4-ze.zephyrcloud.app/remoteEntry.js",
     // cbridge: "https://elliot-braem-404-data-provider-cbridge-data-provi-5d6d8d39a-ze.zephyrcloud.app/remoteEntry.js",
     // cctp: "https://elliot-braem-405-data-provider-cctp-0xjesus-data--8c7836a6a-ze.zephyrcloud.app/remoteEntry.js",
@@ -27,7 +27,7 @@ const PLUGIN_URLS = {
     // wormhole: "https://elliot-braem-410-data-provider-wormhole-0xjesus-d-50cc2e421-ze.zephyrcloud.app/remoteEntry.js",
   },
   development: {
-    across: "http://localhost:3017/remoteEntry.js",
+    "@data-provider/across": "http://localhost:3017/remoteEntry.js",
     // axelar: "http://localhost:3014/remoteEntry.js",
     // cbridge: "http://localhost:3021/remoteEntry.js",
     // cctp: "http://localhost:3016/remoteEntry.js",
@@ -47,7 +47,7 @@ const env = {
 
 export const runtime = createPluginRuntime({
   registry: {
-    "across": { remoteUrl: urls.across },
+    "@data-provider/across": { remoteUrl: urls["@data-provider/across"] },
     // "axelar": { remoteUrl: urls.axelar },
     // "cbridge": { remoteUrl: urls.cbridge },
     // "cctp": { remoteUrl: urls.cctp },
@@ -60,7 +60,7 @@ export const runtime = createPluginRuntime({
 });
 
 // Load all configured providers
-const across = await runtime.usePlugin("across", {
+const across = await runtime.usePlugin("@data-provider/across", {
   variables: {
     baseUrl: process.env.ACROSS_BASE_URL || "https://app.across.to/api",
     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
