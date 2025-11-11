@@ -10,7 +10,7 @@ import {
 } from './contract';
 
 export { contract } from './contract';
-export type {
+export {
   Asset,
   Rate,
   LiquidityDepthPoint,
