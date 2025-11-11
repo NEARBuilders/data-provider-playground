@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "bun --hot run src/index.ts",
     "build": "tsc --noEmit",
+    "start": "bun run src/index.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
