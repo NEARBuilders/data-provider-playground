@@ -38,7 +38,7 @@ const PLUGIN_URLS = {
   }
 } as const;
 
-const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+const isDevelopment = false;
 const urls = isDevelopment ? PLUGIN_URLS.development : PLUGIN_URLS.production;
 
 const env = {
