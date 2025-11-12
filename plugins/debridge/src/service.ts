@@ -660,7 +660,6 @@ export class DataProviderService {
 
   /**
    * Fetch quote with retry logic and exponential backoff
-   * SUPERIOR to 0xjesus: 3 retries with backoff vs their basic single attempt
    */
   private async fetchQuoteWithRetry(
     source: AssetType,

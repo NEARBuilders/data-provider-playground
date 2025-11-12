@@ -17,7 +17,7 @@ declare module "every-plugin" {
 // Plugin URLs - hardcoded for cleanliness since these are deployment artifacts
 const PLUGIN_URLS = {
   production: {
-    "@data-provider/across": "https://elliot-braem-412-data-provider-across-0xjesus-dat-db76f08db-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/across": "https://elliot-braem-478-data-provider-across-data-provid-52751acae-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/axelar": "https://elliot-braem-403-data-provider-axelar-usman-data--4c705eff4-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/cbridge": "https://elliot-braem-471-data-provider-cbridge-data-provi-5f2091ce2-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/cctp": "https://elliot-braem-470-data-provider-cctp-data-provider-bb21830cb-ze.zephyrcloud.app/remoteEntry.js",
@@ -90,15 +90,15 @@ const cbridge = await runtime.usePlugin("@data-provider/cbridge", {
   },
 });
 
-const cctp = await runtime.usePlugin("@data-provider/cctp", {
-  variables: {
-    baseUrl: process.env.CCTP_BASE_URL || "https://api.circle.com",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const cctp = await runtime.usePlugin("@data-provider/cctp", {
+//   variables: {
+//     baseUrl: process.env.CCTP_BASE_URL || "https://api.circle.com",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
 const debridge = await runtime.usePlugin("@data-provider/debridge", {
   variables: {
@@ -110,15 +110,15 @@ const debridge = await runtime.usePlugin("@data-provider/debridge", {
   },
 });
 
-const layerzero = await runtime.usePlugin("@data-provider/layerzero", {
-  variables: {
-    baseUrl: process.env.LAYERZERO_BASE_URL || "https://api.layerzero.com",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const layerzero = await runtime.usePlugin("@data-provider/layerzero", {
+//   variables: {
+//     baseUrl: process.env.LAYERZERO_BASE_URL || "https://api.layerzero.com",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
 const lifi = await runtime.usePlugin("@data-provider/lifi", {
   variables: {
@@ -144,9 +144,9 @@ export const plugins = {
   across,
   // axelar,
   cbridge,
-  cctp,
+  // cctp,
   debridge,
-  layerzero,
+  // layerzero,
   lifi,
   wormhole
 } as const;
