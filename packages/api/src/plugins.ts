@@ -4,13 +4,13 @@ import { createPluginRuntime } from "every-plugin";
 declare module "every-plugin" {
   interface RegisteredPlugins {
     "@data-provider/across": typeof DataProviderTemplatePlugin;
-    // "axelar": typeof DataProviderTemplatePlugin;
-    // "cbridge": typeof DataProviderTemplatePlugin;
-    // "cctp": typeof DataProviderTemplatePlugin;
-    // "debridge": typeof DataProviderTemplatePlugin;
-    // "layerzero": typeof DataProviderTemplatePlugin;
-    // "lifi": typeof DataProviderTemplatePlugin;
-    // "wormhole": typeof DataProviderTemplatePlugin;
+    "@data-provider/axelar": typeof DataProviderTemplatePlugin;
+    "@data-provider/cbridge": typeof DataProviderTemplatePlugin;
+    "@data-provider/cctp": typeof DataProviderTemplatePlugin;
+    "@data-provider/debridge": typeof DataProviderTemplatePlugin;
+    "@data-provider/layerzero": typeof DataProviderTemplatePlugin;
+    "@data-provider/lifi": typeof DataProviderTemplatePlugin;
+    "@data-provider/wormhole": typeof DataProviderTemplatePlugin;
   }
 }
 
@@ -18,23 +18,23 @@ declare module "every-plugin" {
 const PLUGIN_URLS = {
   production: {
     "@data-provider/across": "https://elliot-braem-412-data-provider-across-0xjesus-dat-db76f08db-ze.zephyrcloud.app/remoteEntry.js",
-    // axelar: "https://elliot-braem-403-data-provider-axelar-usman-data--4c705eff4-ze.zephyrcloud.app/remoteEntry.js",
-    // cbridge: "https://elliot-braem-404-data-provider-cbridge-data-provi-5d6d8d39a-ze.zephyrcloud.app/remoteEntry.js",
-    // cctp: "https://elliot-braem-405-data-provider-cctp-0xjesus-data--8c7836a6a-ze.zephyrcloud.app/remoteEntry.js",
-    // debridge: "https://elliot-braem-407-data-provider-debridge-wali-data-245ddc19e-ze.zephyrcloud.app/remoteEntry.js",
-    // layerzero: "https://elliot-braem-408-data-provider-layerzero-0xjesus--c1b0b6b8d-ze.zephyrcloud.app/remoteEntry.js",
-    // lifi: "https://elliot-braem-409-data-provider-lifi-posma-data-pr-07032d5ae-ze.zephyrcloud.app/remoteEntry.js",
-    // wormhole: "https://elliot-braem-410-data-provider-wormhole-0xjesus-d-50cc2e421-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/axelar": "https://elliot-braem-403-data-provider-axelar-usman-data--4c705eff4-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/cbridge": "https://elliot-braem-471-data-provider-cbridge-data-provi-5f2091ce2-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/cctp": "https://elliot-braem-470-data-provider-cctp-data-provider-bb21830cb-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/debridge": "https://elliot-braem-473-data-provider-debridge-data-prov-bfcae6fcd-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/layerzero": "https://elliot-braem-474-data-provider-layerzero-data-pro-78f5bc1cb-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/lifi": "https://elliot-braem-475-data-provider-lifi-data-provider-f8d1b962e-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/wormhole": "https://elliot-braem-476-data-provider-wormhole-data-prov-2d0649a2a-ze.zephyrcloud.app/remoteEntry.js",
   },
   development: {
     "@data-provider/across": "http://localhost:3017/remoteEntry.js",
-    // axelar: "http://localhost:3014/remoteEntry.js",
-    // cbridge: "http://localhost:3021/remoteEntry.js",
-    // cctp: "http://localhost:3016/remoteEntry.js",
-    // debridge: "http://localhost:3018/remoteEntry.js",
-    // layerzero: "http://localhost:3015/remoteEntry.js",
-    // lifi: "http://localhost:3019/remoteEntry.js",
-    // wormhole: "http://localhost:3020/remoteEntry.js",
+    "@data-provider/axelar": "http://localhost:3014/remoteEntry.js",
+    "@data-provider/cbridge": "http://localhost:3021/remoteEntry.js",
+    "@data-provider/cctp": "http://localhost:3016/remoteEntry.js",
+    "@data-provider/debridge": "http://localhost:3018/remoteEntry.js",
+    "@data-provider/layerzero": "http://localhost:3015/remoteEntry.js",
+    "@data-provider/lifi": "http://localhost:3019/remoteEntry.js",
+    "@data-provider/wormhole": "http://localhost:3020/remoteEntry.js",
   }
 } as const;
 
@@ -48,13 +48,13 @@ const env = {
 export const runtime = createPluginRuntime({
   registry: {
     "@data-provider/across": { remoteUrl: urls["@data-provider/across"] },
-    // "axelar": { remoteUrl: urls.axelar },
-    // "cbridge": { remoteUrl: urls.cbridge },
-    // "cctp": { remoteUrl: urls.cctp },
-    // "debridge": { remoteUrl: urls.debridge },
-    // "layerzero": { remoteUrl: urls.layerzero },
-    // "lifi": { remoteUrl: urls.lifi },
-    // "wormhole": { remoteUrl: urls.wormhole },
+    "@data-provider/axelar": { remoteUrl: urls["@data-provider/axelar"] },
+    "@data-provider/cbridge": { remoteUrl: urls["@data-provider/cbridge"] },
+    "@data-provider/cctp": { remoteUrl: urls["@data-provider/cctp"] },
+    "@data-provider/debridge": { remoteUrl: urls["@data-provider/debridge"] },
+    "@data-provider/layerzero": { remoteUrl: urls["@data-provider/layerzero"] },
+    "@data-provider/lifi": { remoteUrl: urls["@data-provider/lifi"] },
+    "@data-provider/wormhole": { remoteUrl: urls["@data-provider/wormhole"] },
   },
   secrets: env,
 });
@@ -70,7 +70,7 @@ const across = await runtime.usePlugin("@data-provider/across", {
   },
 });
 
-// const axelar = await runtime.usePlugin("axelar", {
+// const axelar = await runtime.usePlugin("@data-provider/axelar", {
 //   variables: {
 //     baseUrl: process.env.AXELAR_BASE_URL || "https://api.axelarscan.io",
 //     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
@@ -80,68 +80,75 @@ const across = await runtime.usePlugin("@data-provider/across", {
 //   },
 // });
 
-// const cbridge = await runtime.usePlugin("cbridge", {
-//   variables: {
-//     baseUrl: process.env.CBRIDGE_BASE_URL || "https://cbridge-prod2.celer.app",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const cbridge = await runtime.usePlugin("@data-provider/cbridge", {
+  variables: {
+    baseUrl: process.env.CBRIDGE_BASE_URL || "https://cbridge-prod2.celer.app",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-// const cctp = await runtime.usePlugin("cctp", {
-//   variables: {
-//     baseUrl: process.env.CCTP_BASE_URL || "https://api.circle.com",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const cctp = await runtime.usePlugin("@data-provider/cctp", {
+  variables: {
+    baseUrl: process.env.CCTP_BASE_URL || "https://api.circle.com",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-// const debridge = await runtime.usePlugin("debridge", {
-//   variables: {
-//     baseUrl: process.env.DEBRIDGE_BASE_URL || "https://dln.debridge.finance/v1.0",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const debridge = await runtime.usePlugin("@data-provider/debridge", {
+  variables: {
+    baseUrl: process.env.DEBRIDGE_BASE_URL || "https://dln.debridge.finance/v1.0",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-// const layerzero = await runtime.usePlugin("layerzero", {
-//   variables: {
-//     baseUrl: process.env.LAYERZERO_BASE_URL || "https://api.layerzero.com",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const layerzero = await runtime.usePlugin("@data-provider/layerzero", {
+  variables: {
+    baseUrl: process.env.LAYERZERO_BASE_URL || "https://api.layerzero.com",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-// const lifi = await runtime.usePlugin("lifi", {
-//   variables: {
-//     baseUrl: process.env.LIFI_BASE_URL || "https://li.quest/v1",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const lifi = await runtime.usePlugin("@data-provider/lifi", {
+  variables: {
+    baseUrl: process.env.LIFI_BASE_URL || "https://li.quest/v1",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-// const wormhole = await runtime.usePlugin("wormhole", {
-//   variables: {
-//     baseUrl: process.env.WORMHOLE_BASE_URL || "https://api.wormholescan.io/api/v1",
-//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-//   },
-//   secrets: {
-//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
-//   },
-// });
+const wormhole = await runtime.usePlugin("@data-provider/wormhole", {
+  variables: {
+    baseUrl: process.env.WORMHOLE_BASE_URL || "https://api.wormholescan.io/api/v1",
+    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+  },
+  secrets: {
+    apiKey: "{{DATA_PROVIDER_API_KEY}}"
+  },
+});
 
-export const plugins = { across, 
-  // axelar, cbridge, cctp, debridge, layerzero, lifi, wormhole 
+export const plugins = {
+  across,
+  // axelar,
+  cbridge,
+  cctp,
+  debridge,
+  layerzero,
+  lifi,
+  wormhole
 } as const;
 
 // if (typeof process !== 'undefined') {
