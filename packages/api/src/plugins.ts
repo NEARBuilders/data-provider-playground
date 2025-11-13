@@ -17,7 +17,7 @@ declare module "every-plugin" {
 // Plugin URLs - hardcoded for cleanliness since these are deployment artifacts
 const PLUGIN_URLS = {
   production: {
-    "@data-provider/across": "https://elliot-braem-478-data-provider-across-data-provid-52751acae-ze.zephyrcloud.app/remoteEntry.js",
+    "@data-provider/across": "https://elliot-braem-517-data-provider-across-data-provid-4e003b088-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/axelar": "https://elliot-braem-403-data-provider-axelar-usman-data--4c705eff4-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/cbridge": "https://elliot-braem-471-data-provider-cbridge-data-provi-5f2091ce2-ze.zephyrcloud.app/remoteEntry.js",
     "@data-provider/cctp": "https://elliot-braem-470-data-provider-cctp-data-provider-bb21830cb-ze.zephyrcloud.app/remoteEntry.js",
@@ -48,13 +48,13 @@ const env = {
 export const runtime = createPluginRuntime({
   registry: {
     "@data-provider/across": { remoteUrl: urls["@data-provider/across"] },
-    "@data-provider/axelar": { remoteUrl: urls["@data-provider/axelar"] },
-    "@data-provider/cbridge": { remoteUrl: urls["@data-provider/cbridge"] },
-    "@data-provider/cctp": { remoteUrl: urls["@data-provider/cctp"] },
-    "@data-provider/debridge": { remoteUrl: urls["@data-provider/debridge"] },
-    "@data-provider/layerzero": { remoteUrl: urls["@data-provider/layerzero"] },
-    "@data-provider/lifi": { remoteUrl: urls["@data-provider/lifi"] },
-    "@data-provider/wormhole": { remoteUrl: urls["@data-provider/wormhole"] },
+    // "@data-provider/axelar": { remoteUrl: urls["@data-provider/axelar"] },
+    // "@data-provider/cbridge": { remoteUrl: urls["@data-provider/cbridge"] },
+    // "@data-provider/cctp": { remoteUrl: urls["@data-provider/cctp"] },
+    // "@data-provider/debridge": { remoteUrl: urls["@data-provider/debridge"] },
+    // "@data-provider/layerzero": { remoteUrl: urls["@data-provider/layerzero"] },
+    // "@data-provider/lifi": { remoteUrl: urls["@data-provider/lifi"] },
+    // "@data-provider/wormhole": { remoteUrl: urls["@data-provider/wormhole"] },
   },
   secrets: env,
 });
@@ -80,15 +80,15 @@ const across = await runtime.usePlugin("@data-provider/across", {
 //   },
 // });
 
-const cbridge = await runtime.usePlugin("@data-provider/cbridge", {
-  variables: {
-    baseUrl: process.env.CBRIDGE_BASE_URL || "https://cbridge-prod2.celer.app",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const cbridge = await runtime.usePlugin("@data-provider/cbridge", {
+//   variables: {
+//     baseUrl: process.env.CBRIDGE_BASE_URL || "https://cbridge-prod2.celer.app",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
 // const cctp = await runtime.usePlugin("@data-provider/cctp", {
 //   variables: {
@@ -100,15 +100,15 @@ const cbridge = await runtime.usePlugin("@data-provider/cbridge", {
 //   },
 // });
 
-const debridge = await runtime.usePlugin("@data-provider/debridge", {
-  variables: {
-    baseUrl: process.env.DEBRIDGE_BASE_URL || "https://dln.debridge.finance/v1.0",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const debridge = await runtime.usePlugin("@data-provider/debridge", {
+//   variables: {
+//     baseUrl: process.env.DEBRIDGE_BASE_URL || "https://dln.debridge.finance/v1.0",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
 // const layerzero = await runtime.usePlugin("@data-provider/layerzero", {
 //   variables: {
@@ -120,35 +120,35 @@ const debridge = await runtime.usePlugin("@data-provider/debridge", {
 //   },
 // });
 
-const lifi = await runtime.usePlugin("@data-provider/lifi", {
-  variables: {
-    baseUrl: process.env.LIFI_BASE_URL || "https://li.quest/v1",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const lifi = await runtime.usePlugin("@data-provider/lifi", {
+//   variables: {
+//     baseUrl: process.env.LIFI_BASE_URL || "https://li.quest/v1",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
-const wormhole = await runtime.usePlugin("@data-provider/wormhole", {
-  variables: {
-    baseUrl: process.env.WORMHOLE_BASE_URL || "https://api.wormholescan.io/api/v1",
-    timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
-  },
-  secrets: {
-    apiKey: "{{DATA_PROVIDER_API_KEY}}"
-  },
-});
+// const wormhole = await runtime.usePlugin("@data-provider/wormhole", {
+//   variables: {
+//     baseUrl: process.env.WORMHOLE_BASE_URL || "https://api.wormholescan.io/api/v1",
+//     timeout: Number(process.env.DATA_PROVIDER_TIMEOUT) || 10000,
+//   },
+//   secrets: {
+//     apiKey: "{{DATA_PROVIDER_API_KEY}}"
+//   },
+// });
 
 export const plugins = {
   across,
   // axelar,
-  cbridge,
+  // cbridge,
   // cctp,
-  debridge,
+  // debridge,
   // layerzero,
-  lifi,
-  wormhole
+  // lifi,
+  // wormhole
 } as const;
 
 // if (typeof process !== 'undefined') {
