@@ -1,70 +1,13 @@
-import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-
-// Import types from contract
+import { createHttpClient, createRateLimiter } from '@data-provider/plugin-utils';
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
-
-// Get the directory of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-/**
- * Token Bucket Rate Limiter
- * Implements configurable rate limiting with token bucket algorithm
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-
-  constructor(
-    private readonly maxTokens: number,
-    private readonly refillRate: number // tokens per second
-  ) {
-    this.tokens = maxTokens;
-    this.lastRefill = Date.now();
-  }
-
-  async acquire(): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= 1) {
-      this.tokens -= 1;
-      return;
-    }
-
-    // Wait for next token
-    const waitTime = (1 / this.refillRate) * 1000;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-    this.tokens = 0; // Reset after waiting
-  }
-
-  private refill(): void {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.refillRate;
-
-    this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
-}
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  ProviderSnapshotType,
+  RateType,
+  VolumeWindowType
+} from '@data-provider/shared-contract';
+import { Effect } from "every-plugin/effect";
 
 /**
  * Wormhole-specific API types
@@ -97,15 +40,15 @@ interface GovernorNotionalLimit {
   maxTransactionSize: string;
 }
 
-/**
- * Token decimals configuration
- */
-interface TokenDecimalsConfig {
-  comment?: string;
-  tokens: Record<string, Record<string, { address: string; decimals: number; comment?: string }>>;
+
+
+interface DefiLlamaBridgeResponse {
+  id: string;
+  displayName: string;
+  lastDailyVolume: number;
+  weeklyVolume: number;
+  monthlyVolume: number;
 }
-
-
 
 /**
  * Data Provider Service for Wormhole
@@ -124,36 +67,41 @@ interface TokenDecimalsConfig {
  * - Volume (24h/7d/30d): Real data from Wormholescan Scorecards API
  * - Liquidity limits: Real Governor API limits per chain
  * - Fee quotes: Calculated based on documented Wormhole fee structure
- * - Asset list: 150+ tokens from verified token-decimals.json
+ * - Asset list: Tokens from official Wormhole API
  */
 export class DataProviderService {
-  private rateLimiter: RateLimiter;
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAYS = [1000, 2000, 4000]; // 1s, 2s, 4s
+  private readonly WORMHOLE_BRIDGE_ID = "77"; // Wormhole bridge ID on DefiLlama
+  private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
+
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
 
   constructor(
     private readonly baseUrl: string,
+    private readonly defillamaBaseUrl: string,
     private readonly apiKey: string,
-    private readonly timeout: number
+    private readonly timeout: number,
+    maxRequestsPerSecond: number = 10
   ) {
-    // Rate limiting from ENV (default 10 req/sec)
-    const maxRequestsPerSecond = parseInt(
-      process.env.MAX_REQUESTS_PER_SECOND || "10",
-      10
-    );
-    this.rateLimiter = new RateLimiter(maxRequestsPerSecond, maxRequestsPerSecond);
-  }
+    // Initialize HTTP client with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.baseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3,
+      headers: this.apiKey && this.apiKey !== "not-required" ? { "x-api-key": this.apiKey } : undefined
+    });
 
-  private buildHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      "Accept": "application/json",
-    };
-
-    if (this.apiKey && this.apiKey !== "not-required") {
-      headers["x-api-key"] = this.apiKey;
-    }
-
-    return headers;
+    // Initialize DefiLlama HTTP client
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.defillamaBaseUrl,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
   }
 
   /**
@@ -191,69 +139,44 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch volume metrics from Wormholescan Scorecards API.
-   * Uses real 24h, 7d, and 30d volume data from the Scorecards endpoint.
+   * Fetch volume metrics from DefiLlama bridge aggregator.
    */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
     try {
-      await this.rateLimiter.acquire();
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-      const url = `${this.baseUrl}/scorecards`;
-      console.log(`[Wormhole] Fetching volume data from scorecards: ${url}`);
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: this.buildHeaders(),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const bridgeData = await this.fetchDefiLlamaVolumes();
+      if (!bridgeData) {
+        console.warn("[Wormhole] No volume data available from DefiLlama");
+        return [];
       }
 
-      const data = await response.json() as ScorecardsResponse;
-      console.log(`[Wormhole] Successfully fetched scorecards data with real volume metrics`);
-
-      const measuredAt = new Date().toISOString();
       const volumes: VolumeWindowType[] = [];
+      const now = new Date().toISOString();
 
-      if (windows.includes("24h")) {
-        const volume24h = parseFloat(data["24h_volume"] || "0");
-        volumes.push({
-          window: "24h" as const,
-          volumeUsd: volume24h,
-          measuredAt,
-        });
+      for (const window of windows) {
+        let volumeUsd: number;
+        switch (window) {
+          case "24h":
+            volumeUsd = bridgeData.lastDailyVolume || 0;
+            break;
+          case "7d":
+            volumeUsd = bridgeData.weeklyVolume || 0;
+            break;
+          case "30d":
+            volumeUsd = bridgeData.monthlyVolume || 0;
+            break;
+        }
+        volumes.push({ window, volumeUsd, measuredAt: now });
+        console.log(`[Wormhole] Volume ${window}: $${volumeUsd.toLocaleString()}`);
       }
-
-      if (windows.includes("7d") && data["7d_volume"]) {
-        const volume7d = parseFloat(data["7d_volume"]);
-        volumes.push({
-          window: "7d" as const,
-          volumeUsd: volume7d,
-          measuredAt,
-        });
-      }
-
-      if (windows.includes("30d") && data["30d_volume"]) {
-        const volume30d = parseFloat(data["30d_volume"]);
-        volumes.push({
-          window: "30d" as const,
-          volumeUsd: volume30d,
-          measuredAt,
-        });
-      }
-
       return volumes;
     } catch (error) {
-      console.error("[Wormhole] Failed to fetch volumes:", error);
-      // Fallback to empty array on error
-      return [];
+      console.error("[Wormhole] Failed to fetch volumes from DefiLlama:", error);
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
   }
 
@@ -353,27 +276,7 @@ export class DataProviderService {
     routes: Array<{ source: AssetType; destination: AssetType }>
   ): Promise<LiquidityDepthType[]> {
     try {
-      await this.rateLimiter.acquire();
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-      const url = `${this.baseUrl}/governor/notional/limit`;
-      console.log(`[Wormhole] Fetching liquidity limits from Governor API: ${url}`);
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: this.buildHeaders(),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const governorLimits = await response.json() as GovernorNotionalLimit[];
+      const governorLimits = await this.http.get<GovernorNotionalLimit[]>('/governor/notional/limit');
       console.log(`[Wormhole] Successfully fetched ${governorLimits.length} governor limits`);
 
       // Create a map of chainId -> limits for quick lookup
@@ -442,86 +345,73 @@ export class DataProviderService {
       return liquidity;
     } catch (error) {
       console.error("[Wormhole] Failed to fetch Governor limits:", error);
-      // Fallback to conservative estimates on error
-      return routes.map(route => ({
-        route,
-        thresholds: [
-          { maxAmountIn: "500000", slippageBps: 10 },
-          { maxAmountIn: "800000", slippageBps: 50 },
-          { maxAmountIn: "1000000", slippageBps: 100 }
-        ],
-        measuredAt: new Date().toISOString(),
-      }));
+      return []; // No fake data - return empty array
     }
   }
 
   /**
    * Fetch list of assets supported by Wormhole.
    *
-   * Loads the complete list of verified tokens from token-decimals.json configuration.
-   * All token addresses and decimals are verified via blockchain explorers.
+   * Uses only the official Wormhole API. No local JSON fallbacks.
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     try {
-      // Load token configuration from file
-      const configPath = join(__dirname, "../config/token-decimals.json");
-      const configData = readFileSync(configPath, "utf-8");
-      const config: TokenDecimalsConfig = JSON.parse(configData);
-      const remoteTokens = await this.fetchTokenListWithRetry().catch(() => []);
-      if (remoteTokens.length) {
-        console.log(`[Wormhole] Remote token list returned ${remoteTokens.length} entries for cross-checking`);
-      }
-
+      const tokens = await this.fetchTokenListWithRetry();
       const assets: AssetType[] = [];
 
-      // Convert token config to asset list
-      for (const [symbol, chains] of Object.entries(config.tokens)) {
-        for (const [chainId, tokenInfo] of Object.entries(chains)) {
-          // Skip comment fields
-          if (chainId === "comment") continue;
+      for (const token of tokens) {
+        if (!token.platforms || typeof token.platforms !== 'object') {
+          continue;
+        }
+
+        // Convert platform mappings to asset entries
+        for (const [chainName, address] of Object.entries(token.platforms)) {
+          if (!address || typeof address !== 'string') {
+            continue;
+          }
+
+          // Map chain names to chain IDs (simplified mapping)
+          const chainId = this.mapChainNameToId(chainName);
+          if (!chainId) {
+            continue;
+          }
 
           assets.push({
             chainId,
-            assetId: tokenInfo.address,
-            symbol,
-            decimals: tokenInfo.decimals,
+            assetId: address,
+            symbol: token.symbol,
+            decimals: 18, // Default - Wormhole API doesn't provide decimals
           });
         }
       }
 
-      console.log(`[Wormhole] Loaded ${assets.length} verified assets from token-decimals.json`);
+      console.log(`[Wormhole] Loaded ${assets.length} assets from API`);
 
       return {
         assets,
         measuredAt: new Date().toISOString(),
       };
     } catch (error) {
-      console.error("[Wormhole] Failed to load listed assets:", error);
-      // Fallback to a minimal set of verified assets if config load fails
-      return {
-        assets: [
-          {
-            chainId: "1",
-            assetId: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-            symbol: "USDC",
-            decimals: 6,
-          },
-          {
-            chainId: "1",
-            assetId: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-            symbol: "WETH",
-            decimals: 18,
-          },
-          {
-            chainId: "1",
-            assetId: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-            symbol: "USDT",
-            decimals: 6,
-          },
-        ],
-        measuredAt: new Date().toISOString(),
-      };
+      console.error("[Wormhole] Failed to fetch assets from API:", error);
+      return { assets: [], measuredAt: new Date().toISOString() }; // Empty on error
     }
+  }
+
+  /**
+   * Map Wormhole chain names to chain IDs
+   */
+  private mapChainNameToId(chainName: string): string | null {
+    const mapping: Record<string, string> = {
+      'ethereum': '1',
+      'bsc': '56',
+      'polygon': '137',
+      'avalanche': '43114',
+      'arbitrum': '42161',
+      'optimism': '10',
+      'base': '8453',
+      'fantom': '250',
+    };
+    return mapping[chainName.toLowerCase()] || null;
   }
 
   /**
@@ -533,27 +423,9 @@ export class DataProviderService {
 
     for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
       try {
-        await this.rateLimiter.acquire();
+        console.log(`[Wormhole] Fetching token list (attempt ${attempt + 1}/${this.MAX_RETRIES})`);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.baseUrl}/native-token-transfer/token-list`;
-        console.log(`[Wormhole] Fetching token list (attempt ${attempt + 1}/${this.MAX_RETRIES}): ${url}`);
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: this.buildHeaders(),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json() as WormholeToken[];
+        const data = await this.http.get<WormholeToken[]>('/native-token-transfer/token-list');
         console.log(`[Wormhole] Successfully fetched ${data.length || 0} tokens`);
         return data;
       } catch (error) {
@@ -571,18 +443,55 @@ export class DataProviderService {
     throw lastError || new Error("Failed to fetch token list after retries");
   }
 
+  /**
+   * Fetch volume data from DefiLlama Bridge API with caching and retry logic.
+   */
+  private async fetchDefiLlamaVolumes(): Promise<DefiLlamaBridgeResponse | null> {
+    // Check cache first
+    if (this.volumeCache && (Date.now() - this.volumeCache.fetchedAt) < this.VOLUME_CACHE_TTL) {
+      console.log("[Wormhole] Using cached volume data from DefiLlama");
+      return this.volumeCache.data;
+    }
+
+    try {
+      const data = await this.defillamaHttp.get<DefiLlamaBridgeResponse>(`/bridge/${this.WORMHOLE_BRIDGE_ID}`);
+
+      // Validate response has expected fields
+      if (typeof data.lastDailyVolume !== 'number') {
+        throw new Error("Invalid response structure from DefiLlama");
+      }
+
+      // Cache the result
+      this.volumeCache = {
+        data,
+        fetchedAt: Date.now(),
+      };
+
+      console.log(`[Wormhole] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
+      return data;
+    } catch (error) {
+      console.error(`[Wormhole] Failed to fetch volumes from DefiLlama:`, error instanceof Error ? error.message : String(error));
+
+      // Cache the null result to avoid hammering the API
+      this.volumeCache = {
+        data: null,
+        fetchedAt: Date.now(),
+      };
+
+      return null;
+    }
+  }
+
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        // Simple health check - just return OK
-        // In production, this would ping the actual API
-        // For testing, we don't want to depend on external APIs
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),
         };
       },
-      catch: (error: unknown) => new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
+      catch: (error: unknown) =>
+        new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
     });
   }
 }

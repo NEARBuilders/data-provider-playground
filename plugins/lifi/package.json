@@ -2,15 +2,14 @@
   "name": "@data-provider/lifi",
   "version": "0.0.2",
   "description": "Li.Fi bridge data adapter for NEAR Intents",
-	"main": "./dist/index.js",
-	"types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
   "type": "module",
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "bottleneck": "^2.19.5",
-    "decimal.js": "^10.4.3"
+    "@data-provider/plugin-utils": "workspace:*"
   },
   "devDependencies": {
     "@data-provider/shared-contract": "workspace:*",

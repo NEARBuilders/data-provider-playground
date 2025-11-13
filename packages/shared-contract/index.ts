@@ -6,7 +6,8 @@ import {
   LiquidityDepth,
   VolumeWindow,
   ListedAssets,
-  ProviderSnapshot,
+  Snapshot,
+  Route,
 } from './contract';
 
 export { contract } from './contract';
@@ -17,15 +18,40 @@ export {
   LiquidityDepth,
   VolumeWindow,
   ListedAssets,
-  ProviderSnapshot,
+  Snapshot,
+  Route,
 } from './contract';
 
 export type AssetType = z.infer<typeof Asset>;
-export type RateType = z.infer<typeof Rate>;
+export type RateType<TAsset = AssetType> = {
+  source: TAsset;
+  destination: TAsset;
+  amountIn: string;
+  amountOut: string;
+  effectiveRate: number;
+  totalFeesUsd: number | null;
+  quotedAt: string;
+};
 export type LiquidityDepthPointType = z.infer<typeof LiquidityDepthPoint>;
-export type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
+export type LiquidityDepthType<TAsset = AssetType> = {
+  route: RouteType<TAsset>;
+  thresholds: Array<{
+    maxAmountIn: string;
+    slippageBps: number;
+  }>;
+  measuredAt: string;
+};
 export type VolumeWindowType = z.infer<typeof VolumeWindow>;
 export type ListedAssetsType = z.infer<typeof ListedAssets>;
-export type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
+export type SnapshotType<TAsset = AssetType> = {
+  volumes: VolumeWindowType[];
+  listedAssets: {
+    assets: TAsset[];
+    measuredAt: string;
+  };
+  rates?: RateType<TAsset>[];
+  liquidity?: LiquidityDepthType<TAsset>[];
+};
+export type RouteType<TAsset = AssetType> = { source: TAsset; destination: TAsset };
 
 export type TimeWindow = VolumeWindowType['window'];

@@ -1,23 +1,13 @@
-import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
-
-// Import types from contract
+import { createHttpClient, createRateLimiter } from '@data-provider/plugin-utils';
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  ProviderSnapshotType,
+  RateType,
+  VolumeWindowType
+} from '@data-provider/shared-contract';
+import { Effect } from "every-plugin/effect";
 
 // Stargate API Response Types
 interface StargateChain {
@@ -68,45 +58,15 @@ interface StargateQuote {
   }>;
 }
 
-/**
- * Rate Limiter - implements token bucket algorithm
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-  private readonly maxTokens: number;
-  private readonly refillRate: number; // tokens per second
-
-  constructor(maxTokens: number, refillRate: number) {
-    this.maxTokens = maxTokens;
-    this.tokens = maxTokens;
-    this.refillRate = refillRate;
-    this.lastRefill = Date.now();
-  }
-
-  async acquire(): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= 1) {
-      this.tokens -= 1;
-      return;
-    }
-
-    // Wait until we have a token
-    const waitTime = ((1 - this.tokens) / this.refillRate) * 1000;
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-    this.tokens = 0;
-  }
-
-  private refill() {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.refillRate;
-
-    this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
+interface DefiLlamaBridgeResponse {
+  id: string;
+  displayName: string;
+  lastDailyVolume: number;
+  weeklyVolume: number;
+  monthlyVolume: number;
 }
+
+
 
 /**
  * LayerZero/Stargate Data Provider Service
@@ -115,20 +75,36 @@ class RateLimiter {
  * Uses Stargate Finance REST API for quotes, chains, and tokens.
  */
 export class DataProviderService {
-  private rateLimiter: RateLimiter;
+  private readonly LAYERZERO_BRIDGE_ID = "84"; // LayerZero bridge ID on DefiLlama
+  private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
+
   private chains: StargateChain[] | null = null;
   private tokens: StargateToken[] | null = null;
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
 
   constructor(
     private readonly baseUrl: string,
     private readonly defillamaBaseUrl: string,
     private readonly apiKey: string,
     private readonly timeout: number,
-    private readonly maxRequestsPerSecond: number = 10
+    maxRequestsPerSecond: number = 10
   ) {
-    // Rate limiter: both maxTokens and refillRate set to maxRequestsPerSecond
-    // This allows the full rate limit to be utilized
-    this.rateLimiter = new RateLimiter(maxRequestsPerSecond, maxRequestsPerSecond);
+    // Initialize HTTP clients with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.baseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3
+    });
+
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.defillamaBaseUrl,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
   }
 
   /**
@@ -184,106 +160,43 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch volume metrics for specified time windows from DefiLlama.
-   *
-   * IMPORTANT: Why DefiLlama instead of Stargate API?
-   *
-   * After thorough research of available data sources:
-   *
-   * ❌ Stargate Finance REST API (https://stargate.finance/api/v1):
-   *    - Only provides /chains, /tokens, and /quotes endpoints
-   *    - NO /stats, /volume, or /analytics endpoints exist
-   *    - Confirmed via official API docs (docs.stargate.finance)
-   *
-   * ❌ LayerZero Scan API (https://scan.layerzero-api.com/v1):
-   *    - Provides /messages/* endpoints for transaction queries
-   *    - NO pre-calculated volume statistics
-   *    - Would require aggregating all transactions manually (slow, complex)
-   *
-   * ✅ DefiLlama (https://api.llama.fi):
-   *    - Aggregates REAL on-chain transaction data from Stargate smart contracts
-   *    - Monitors bridge events across all supported chains
-   *    - Same data source used by official Stargate dashboard
-   *    - Industry standard for DeFi analytics
-   *    - Public API, no authentication required
-   *
-   * This is NOT estimated data - DefiLlama tracks actual bridge transactions
-   * from Stargate contract events, making it the most reliable source for
-   * historical volume metrics.
+   * Fetch volume metrics from DefiLlama bridge aggregator.
    */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
-    const results: VolumeWindowType[] = [];
-    const measuredAt = new Date().toISOString();
-
     try {
-      console.log(`[LayerZero] Fetching volume data from DefiLlama...`);
-
-      // Fetch Stargate V2 fees data from DefiLlama
-      // Note: DeFiLlama doesn't provide direct volume data for bridges
-      // We use fees as a proxy for activity (higher fees = higher volume)
-      const response = await fetch(`${this.defillamaBaseUrl}/summary/fees/stargate-v2`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(this.timeout)
-      });
-
-      if (!response.ok) {
-        console.warn(`[LayerZero] ⚠ DefiLlama API returned ${response.status}`);
+      const bridgeData = await this.fetchDefiLlamaVolumes();
+      if (!bridgeData) {
+        console.warn("[LayerZero] No volume data available from DefiLlama");
         return [];
       }
 
-      const data = await response.json() as {
-        total24h?: number;
-        total7d?: number;
-        total30d?: number;
-        totalDataChart?: Array<[number, number]>;
-      };
+      const volumes: VolumeWindowType[] = [];
+      const now = new Date().toISOString();
 
-      // Use fees data as a proxy for volume activity
-      // Higher fees typically correlate with higher transaction volume
-
-      // 24h volume from total24h
-      if (windows.includes("24h") && data.total24h !== undefined) {
-        // Estimate volume as ~200x fees (typical 0.5% fee rate)
-        const estimatedVolume = Math.abs(data.total24h) * 200;
-        results.push({
-          window: "24h",
-          volumeUsd: estimatedVolume,
-          measuredAt,
-        });
-        console.log(`[LayerZero] ✓ 24h volume (estimated): $${estimatedVolume.toLocaleString()}`);
+      for (const window of windows) {
+        let volumeUsd: number;
+        switch (window) {
+          case "24h":
+            volumeUsd = bridgeData.lastDailyVolume || 0;
+            break;
+          case "7d":
+            volumeUsd = bridgeData.weeklyVolume || 0;
+            break;
+          case "30d":
+            volumeUsd = bridgeData.monthlyVolume || 0;
+            break;
+        }
+        volumes.push({ window, volumeUsd, measuredAt: now });
+        console.log(`[LayerZero] Volume ${window}: $${volumeUsd.toLocaleString()}`);
       }
-
-      // 7d volume from total7d
-      if (windows.includes("7d") && data.total7d !== undefined) {
-        const estimatedVolume = Math.abs(data.total7d) * 200;
-        results.push({
-          window: "7d",
-          volumeUsd: estimatedVolume,
-          measuredAt,
-        });
-        console.log(`[LayerZero] ✓ 7d volume (estimated): $${estimatedVolume.toLocaleString()}`);
-      }
-
-      // 30d volume from total30d
-      if (windows.includes("30d") && data.total30d !== undefined) {
-        const estimatedVolume = Math.abs(data.total30d) * 200;
-        results.push({
-          window: "30d",
-          volumeUsd: estimatedVolume,
-          measuredAt,
-        });
-        console.log(`[LayerZero] ✓ 30d volume (estimated): $${estimatedVolume.toLocaleString()}`);
-      }
-
-      if (results.length === 0) {
-        console.error("[LayerZero] ❌ No volume data could be retrieved");
-      }
-
-      return results;
+      return volumes;
     } catch (error) {
-      console.error("[LayerZero] ❌ Failed to get volume data from DefiLlama:", error);
-      return []; // Return empty on failure, as per contract robustness
+      console.error("[LayerZero] Failed to fetch volumes from DefiLlama:", error);
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
   }
 
@@ -574,9 +487,6 @@ export class DataProviderService {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        // Rate limiting
-        await this.rateLimiter.acquire();
-
         const srcChainKey = this.getChainKeyById(source.chainId);
         const dstChainKey = this.getChainKeyById(destination.chainId);
 
@@ -593,7 +503,7 @@ export class DataProviderService {
         // Dummy addresses for quote (Stargate requires them)
         const dummyAddress = '0x0000000000000000000000000000000000000001';
 
-        const params = new URLSearchParams({
+        const params = {
           srcToken: source.assetId,
           dstToken: destination.assetId,
           srcChainKey: srcChainKey,
@@ -602,28 +512,13 @@ export class DataProviderService {
           dstAmountMin: dstAmountMin,
           srcAddress: dummyAddress,
           dstAddress: dummyAddress,
-        });
-
-        const url = `${this.baseUrl}/quotes?${params}`;
+        };
 
         if (attempt === 0) {
           console.log(`[LayerZero] Fetching quote for ${routeDescription}...`);
-          console.log(`[LayerZero] 🔍 URL: ${url}`);
         }
 
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-          signal: AbortSignal.timeout(this.timeout)
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json() as { quotes: StargateQuote[] };
+        const data = await this.http.get<{ quotes: StargateQuote[] }>('/quotes', { params });
 
         // Return the first valid quote (prefer taxi over bus for speed)
         const validQuote = data.quotes.find(q => q.error === null);
@@ -643,7 +538,7 @@ export class DataProviderService {
           // Exponential backoff: 1s, 2s, 4s
           const backoffMs = Math.pow(2, attempt) * 1000;
           console.warn(`[LayerZero] ⚠ Retry ${attempt + 1}/${maxRetries} for ${routeDescription} after ${backoffMs}ms (${lastError.message})`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
         }
       }
     }
@@ -670,19 +565,7 @@ export class DataProviderService {
   private async fetchChainsWithRetry(maxRetries: number = 3): Promise<StargateChain[]> {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        await this.rateLimiter.acquire();
-
-        const response = await fetch(`${this.baseUrl}/chains`, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(this.timeout)
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json() as { chains: StargateChain[] };
+        const data = await this.http.get<{ chains: StargateChain[] }>('/chains');
         return data.chains;
 
       } catch (error) {
@@ -702,19 +585,7 @@ export class DataProviderService {
   private async fetchTokensWithRetry(maxRetries: number = 3): Promise<StargateToken[]> {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        await this.rateLimiter.acquire();
-
-        const response = await fetch(`${this.baseUrl}/tokens`, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(this.timeout)
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json() as { tokens: StargateToken[] };
+        const data = await this.http.get<{ tokens: StargateToken[] }>('/tokens');
         return data.tokens;
 
       } catch (error) {
@@ -813,23 +684,48 @@ export class DataProviderService {
     return Math.pow(10, asset.decimals).toString();
   }
 
-  // getEstimatedVolumeForWindow() method REMOVED - no estimated data allowed
-  // Use LayerZero Scan API or subgraphs for real volume data
+  /**
+   * Fetch volume data from DefiLlama Bridge API with caching and retry logic.
+   */
+  private async fetchDefiLlamaVolumes(): Promise<DefiLlamaBridgeResponse | null> {
+    // Check cache first
+    if (this.volumeCache && (Date.now() - this.volumeCache.fetchedAt) < this.VOLUME_CACHE_TTL) {
+      console.log("[LayerZero] Using cached volume data from DefiLlama");
+      return this.volumeCache.data;
+    }
+
+    try {
+      const data = await this.defillamaHttp.get<DefiLlamaBridgeResponse>(`/bridge/${this.LAYERZERO_BRIDGE_ID}`);
+
+      // Validate response has expected fields
+      if (typeof data.lastDailyVolume !== 'number') {
+        throw new Error("Invalid response structure from DefiLlama");
+      }
+
+      // Cache the result
+      this.volumeCache = {
+        data,
+        fetchedAt: Date.now(),
+      };
+
+      console.log(`[LayerZero] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
+      return data;
+    } catch (error) {
+      console.error(`[LayerZero] Failed to fetch volumes from DefiLlama:`, error instanceof Error ? error.message : String(error));
+
+      // Cache the null result to avoid hammering the API
+      this.volumeCache = {
+        data: null,
+        fetchedAt: Date.now(),
+      };
+
+      return null;
+    }
+  }
 
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        // Test connectivity by fetching chains
-        await this.rateLimiter.acquire();
-        const response = await fetch(`${this.baseUrl}/chains`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(this.timeout)
-        });
-
-        if (!response.ok) {
-          throw new Error(`Health check failed: HTTP ${response.status}`);
-        }
-
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),

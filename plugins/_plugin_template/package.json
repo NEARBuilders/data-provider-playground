@@ -8,6 +8,9 @@
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
+  "dependencies": {
+    "@data-provider/plugin-utils": "workspace:*"
+  },
   "devDependencies": {
     "@data-provider/shared-contract": "workspace:*",
     "@effect/language-service": "^0.41.1",
@@ -27,10 +30,8 @@
     "build": "rspack build",
     "type-check": "tsc -p tsconfig.build.json --noEmit",
     "dev": "rspack serve",
-    "test": "vitest run; vitest run --config vitest.integration.config.ts",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
     "coverage": "vitest run --coverage"
   }
 }

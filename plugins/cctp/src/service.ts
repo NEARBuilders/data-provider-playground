@@ -1,64 +1,16 @@
 import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
+import { createHttpClient, createRateLimiter } from '@data-provider/plugin-utils';
 import cctpDomainsConfig from "../config/cctp-domains.json";
-
-// Import types from contract
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
+  AssetType,
+  RateType,
+  LiquidityDepthType,
+  VolumeWindowType,
+  ListedAssetsType,
+  ProviderSnapshotType
+} from '@data-provider/shared-contract';
 
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
 
-/**
- * Token Bucket Rate Limiter
- * CCTP API limit: 35 requests per second
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-
-  constructor(
-    private readonly maxTokens: number,
-    private readonly refillRate: number // tokens per second
-  ) {
-    this.tokens = maxTokens;
-    this.lastRefill = Date.now();
-  }
-
-  async acquire(): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= 1) {
-      this.tokens -= 1;
-      return;
-    }
-
-    // Wait for next token
-    const waitTime = (1 / this.refillRate) * 1000;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-    this.tokens = 0;
-  }
-
-  private refill(): void {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.refillRate;
-
-    this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
-}
 
 /**
  * CCTP-specific API types
@@ -126,13 +78,12 @@ interface CCTPDomainsConfig {
  * - Fast Transfer (confirmed, ~8-20s) vs Standard (finalized, ~15 min on Ethereum)
  */
 export class DataProviderService {
-  private rateLimiter: RateLimiter;
-  private readonly MAX_RETRIES = 3;
-  private readonly RETRY_DELAYS = [1000, 2000, 4000]; // 1s, 2s, 4s
   private readonly DEFILLAMA_BASE_URL = "https://bridges.llama.fi";
   private readonly CCTP_BRIDGE_ID = "51"; // Circle CCTP bridge ID on DefiLlama
   private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
   private cctpDomains: CCTPDomainsConfig | null = null;
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
 
   // Cache for volume data to avoid excessive API calls
   private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
@@ -197,20 +148,29 @@ export class DataProviderService {
       dayBeforeLastVolume: normalized.dayBeforeLastVolume,
       weeklyVolume: normalized.weeklyVolume,
       monthlyVolume: normalized.monthlyVolume,
-    };
+    } as DefiLlamaBridgeResponse;
   }
 
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string, // Not used - CCTP is public
-    private readonly timeout: number
+    private readonly timeout: number,
+    maxRequestsPerSecond: number = 35
   ) {
-    // Rate limiting: 35 req/sec per CCTP docs
-    const maxRequestsPerSecond = parseInt(
-      process.env.MAX_REQUESTS_PER_SECOND || "35",
-      10
-    );
-    this.rateLimiter = new RateLimiter(maxRequestsPerSecond, maxRequestsPerSecond);
+    // Initialize HTTP clients with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.baseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3
+    });
+
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.DEFILLAMA_BASE_URL,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
 
     console.log(`[CCTP] Service configured with base URL: ${this.baseUrl}`);
 
@@ -367,8 +327,12 @@ export class DataProviderService {
       return volumes;
     } catch (error) {
       console.error("[CCTP] Failed to fetch volumes from DefiLlama:", error);
-      // Return empty array instead of throwing - volumes are supplementary
-      return [];
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
   }
 
@@ -555,133 +519,66 @@ export class DataProviderService {
     sourceDomain: number,
     destDomain: number
   ): Promise<CCTPFeeResponse> {
-    let lastError: Error | null = null;
+    try {
+      const payload = await this.http.get<any>(`/v2/burn/USDC/fees/${sourceDomain}/${destDomain}`);
+      const data: CCTPFeeResponse | undefined = Array.isArray(payload)
+        ? payload
+        : Array.isArray((payload as CCTPFeeResponseWrapper | undefined)?.data)
+          ? (payload as CCTPFeeResponseWrapper).data
+          : undefined;
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.baseUrl}/v2/burn/USDC/fees/${sourceDomain}/${destDomain}`;
-        console.log(`[CCTP] Fetching fees (attempt ${attempt + 1}/${this.MAX_RETRIES}): ${url}`);
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const payload = await response.json();
-        const data: CCTPFeeResponse | undefined = Array.isArray(payload)
-          ? payload
-          : Array.isArray((payload as CCTPFeeResponseWrapper | undefined)?.data)
-            ? (payload as CCTPFeeResponseWrapper).data
-            : undefined;
-
-        if (!data || data.length === 0) {
-          throw new Error("CCTP fees endpoint returned an empty or invalid payload");
-        }
-
-        console.log(`[CCTP] Successfully fetched fees:`, data);
-        return data;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[CCTP] Fees attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          const delay = this.RETRY_DELAYS[attempt];
-          console.log(`[CCTP] Retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
+      if (!data || data.length === 0) {
+        throw new Error("CCTP fees endpoint returned an empty or invalid payload");
       }
-    }
 
-    // Return default fees if all retries fail
-    console.warn("[CCTP] Using default fees after retries failed");
-    return [
-      { finalityThreshold: 1000, minimumFee: 1 }, // Fast: 1 bps
-      { finalityThreshold: 2000, minimumFee: 1 }, // Standard: 1 bps
-    ];
+      console.log(`[CCTP] Successfully fetched fees:`, data);
+      return data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[CCTP] Fees fetch failed:`, message);
+
+      // Return default fees if all retries fail
+      console.warn("[CCTP] Using default fees after retries failed");
+      return [
+        { finalityThreshold: 1000, minimumFee: 1 }, // Fast: 1 bps
+        { finalityThreshold: 2000, minimumFee: 1 }, // Standard: 1 bps
+      ];
+    }
   }
 
   /**
    * Fetch CCTP Fast Transfer Allowance with retry logic.
    */
   private async fetchAllowanceWithRetry(): Promise<CCTPAllowanceResponse | null> {
-    let lastError: Error | null = null;
+    try {
+      const payload = await this.http.get<any>(`/v2/fastBurn/USDC/allowance`);
+      const rawAllowance = (payload as Partial<CCTPAllowanceResponse> | undefined)?.allowance;
+      const allowance =
+        typeof rawAllowance === "number"
+          ? rawAllowance
+          : typeof rawAllowance === "string"
+            ? Number.parseFloat(rawAllowance)
+            : undefined;
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.baseUrl}/v2/fastBurn/USDC/allowance`;
-        console.log(`[CCTP] Fetching allowance (attempt ${attempt + 1}/${this.MAX_RETRIES}): ${url}`);
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const payload = await response.json();
-        const rawAllowance = (payload as Partial<CCTPAllowanceResponse> | undefined)?.allowance;
-        const allowance =
-          typeof rawAllowance === "number"
-            ? rawAllowance
-            : typeof rawAllowance === "string"
-              ? Number.parseFloat(rawAllowance)
-              : undefined;
-
-        if (typeof allowance !== "number" || !Number.isFinite(allowance)) {
-          throw new Error("CCTP allowance endpoint returned an invalid allowance value");
-        }
-
-        const result: CCTPAllowanceResponse = {
-          allowance,
-          lastUpdated:
-            typeof (payload as Partial<CCTPAllowanceResponse>)?.lastUpdated === "string"
-              ? (payload as CCTPAllowanceResponse).lastUpdated
-              : new Date().toISOString(),
-        };
-
-        console.log(`[CCTP] Successfully fetched allowance: $${allowance.toLocaleString()} USDC`);
-        return result;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[CCTP] Allowance attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          const delay = this.RETRY_DELAYS[attempt];
-          console.log(`[CCTP] Retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
+      if (typeof allowance !== "number" || !Number.isFinite(allowance)) {
+        throw new Error("CCTP allowance endpoint returned an invalid allowance value");
       }
-    }
 
-    // Allow the rest of the snapshot to render even if allowance is unavailable
-    console.error("[CCTP] Failed to fetch allowance from API after all retries");
-    return null;
+      const result: CCTPAllowanceResponse = {
+        allowance,
+        lastUpdated:
+          typeof (payload as Partial<CCTPAllowanceResponse>)?.lastUpdated === "string"
+            ? (payload as CCTPAllowanceResponse).lastUpdated
+            : new Date().toISOString(),
+      };
+
+      console.log(`[CCTP] Successfully fetched allowance: $${allowance.toLocaleString()} USDC`);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[CCTP] Allowance fetch failed:`, message);
+      return null;
+    }
   }
 
   /**
@@ -697,113 +594,46 @@ export class DataProviderService {
       return this.volumeCache.data;
     }
 
-    let lastError: Error | null = null;
+    try {
+      const rawData = await this.defillamaHttp.get<any>(`/bridge/${this.CCTP_BRIDGE_ID}`);
+      const data = this.parseDefiLlamaResponse(rawData);
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.DEFILLAMA_BASE_URL}/bridge/${this.CCTP_BRIDGE_ID}`;
-        console.log(`[CCTP] Fetching volumes from DefiLlama (attempt ${attempt + 1}/${this.MAX_RETRIES}): ${url}`);
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Accept": "application/json",
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const rawData = await response.json();
-        const data = this.parseDefiLlamaResponse(rawData);
-
-        if (!data) {
-          let preview = "";
-          try {
-            preview = JSON.stringify(rawData).slice(0, 500);
-          } catch {
-            preview = "[unserializable]";
-          }
-
-          throw new Error(
-            preview
-              ? `Invalid response structure from DefiLlama: ${preview}`
-              : "Invalid response structure from DefiLlama"
-          );
-        }
-
-        // Cache the result
-        this.volumeCache = {
-          data,
-          fetchedAt: Date.now(),
-        };
-
-        console.log(`[CCTP] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
-        return data;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[CCTP] DefiLlama attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          const delay = this.RETRY_DELAYS[attempt];
-          console.log(`[CCTP] Retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
+      if (!data) {
+        throw new Error("Invalid response structure from DefiLlama");
       }
+
+      // Cache the result
+      this.volumeCache = {
+        data,
+        fetchedAt: Date.now(),
+      };
+
+      console.log(`[CCTP] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
+      return data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[CCTP] DefiLlama fetch failed:`, message);
+
+      // Cache the null result to avoid hammering the API
+      this.volumeCache = {
+        data: null,
+        fetchedAt: Date.now(),
+      };
+
+      return null;
     }
-
-    console.warn("[CCTP] All DefiLlama fetch attempts failed");
-
-    // Cache the null result to avoid hammering the API
-    this.volumeCache = {
-      data: null,
-      fetchedAt: Date.now(),
-    };
-
-    return null;
   }
 
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        // Test API connectivity with allowance endpoint
-        try {
-          await this.rateLimiter.acquire();
-
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-          const response = await fetch(`${this.baseUrl}/v2/fastBurn/USDC/allowance`, {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            return {
-              status: "ok" as const,
-              timestamp: new Date().toISOString(),
-            };
-          } else {
-            throw new Error(`API returned ${response.status}`);
-          }
-        } catch (error) {
-          console.error("[CCTP] Health check failed:", error);
-          throw error;
-        }
+        return {
+          status: "ok" as const,
+          timestamp: new Date().toISOString(),
+        };
       },
-      catch: (error: unknown) => new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
+      catch: (error: unknown) =>
+        new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
     });
   }
 }

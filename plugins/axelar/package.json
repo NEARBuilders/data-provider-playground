@@ -34,6 +34,7 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@axelar-network/axelarjs-sdk": "^0.17.9"
+    "@axelar-network/axelarjs-sdk": "^0.17.9",
+    "@data-provider/plugin-utils": "workspace:*"
   }
 }

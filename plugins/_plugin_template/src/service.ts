@@ -1,77 +1,64 @@
+import { DataProviderService as BaseDataProviderService } from "@data-provider/plugin-utils";
+import { ProviderApiClient } from "./client";
 import type {
-  AssetType,
   LiquidityDepthType,
-  ListedAssetsType,
+  ProviderAssetType,
   RateType,
+  RouteType,
+  SnapshotType,
   TimeWindow,
   VolumeWindowType
-} from "@data-provider/shared-contract";
-import { Effect } from "every-plugin/effect";
+} from "./contract";
 
 /**
- * Data Provider Service - Collects cross-chain bridge metrics from a single provider.
+ * Service Layer for Data Provider Business Logic
  *
- * Replace empty implementations with actual provider API calls
- * (LayerZero, Wormhole, CCTP, Across, deBridge, Axelar, Li.Fi, etc.)
+ * This layer implements the core business logic for interacting with data provider APIs.
+ * Key characteristics:
+ * - Works exclusively in provider-specific format (ProviderAssetType, ProviderRouteType)
+ * - No knowledge of NEAR Intents format - that's handled by the router layer
+ * - Each method maps directly to a provider API endpoint
+ * - Returns standardized internal types with generic provider asset types
+ *
+ * Architecture Flow:
+ * Client Input (NEAR Intents) → Router (transformRoute) → Service (Provider format) → API Response
+ * API Response → Service (standardize) → Router (transformAsset) → Client Output (NEAR Intents)
  */
-export class DataProviderService {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly apiKey: string,
-    private readonly timeout: number
-  ) { }
-
-  /**
-   * Get complete snapshot of provider data for given routes and notionals.
-   */
-  getSnapshot(params: {
-    routes?: Array<{ source: AssetType; destination: AssetType }>;
-    notionals?: string[];
-    includeWindows?: TimeWindow[];
-  }) {
-    return Effect.tryPromise({
-      try: async () => {
-        const hasRoutes = params.routes && params.routes.length > 0;
-        const hasNotionals = params.notionals && params.notionals.length > 0;
-
-        const [volumes, listedAssets] = await Promise.all([
-          this.getVolumes(params.includeWindows || ["24h"]),
-          this.getListedAssets()
-        ]);
-
-        const rates = hasRoutes && hasNotionals
-          ? await this.getRates(params.routes!, params.notionals!)
-          : [];
-
-        const liquidity = hasRoutes
-          ? await this.getLiquidityDepth(params.routes!)
-          : [];
-
-        return {
-          volumes,
-          listedAssets,
-          ...(rates.length > 0 && { rates }),
-          ...(liquidity.length > 0 && { liquidity }),
-        };
-      },
-      catch: (error: unknown) =>
-        new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)
-    });
+export class DataProviderService extends BaseDataProviderService<ProviderAssetType> {
+  constructor(private readonly client: ProviderApiClient) {
+    super();
   }
 
   /**
    * Fetch volume metrics for specified time windows.
-   * TODO: Implement provider's volume API endpoint
    */
-  private async getVolumes(windows: TimeWindow[]): Promise<VolumeWindowType[]> {
-    return [];
+  async getVolumes(windows: TimeWindow[]): Promise<VolumeWindowType[]> {
+    const response = await this.client.fetchVolumes(windows);
+    return response.volumes.map(volume => ({
+      window: volume.window as TimeWindow,
+      volumeUsd: volume.volumeUsd,
+      measuredAt: volume.measuredAt
+    }));
+  }
+
+  /**
+   * Fetch list of assets supported by the provider.
+   */
+  async getListedAssets(): Promise<ProviderAssetType[]> {
+    const response = await this.client.fetchAssets();
+    return response.assets.map(asset => ({
+      chainId: asset.chainId,
+      address: asset.address,
+      symbol: asset.symbol,
+      decimals: asset.decimals
+    }));
   }
 
   /**
    * Fetch rate quotes for route/notional combinations.
    * TODO: Implement provider's quote API endpoint
    */
-  private async getRates(routes: Array<{ source: AssetType; destination: AssetType }>, notionals: string[]): Promise<RateType[]> {
+  async getRates(routes: RouteType<ProviderAssetType>[], notionals: string[]): Promise<RateType<ProviderAssetType>[]> {
     return [];
   }
 
@@ -79,30 +66,35 @@ export class DataProviderService {
    * Fetch liquidity depth at 50bps and 100bps thresholds.
    * TODO: Implement provider's liquidity API or simulate with quotes
    */
-  private async getLiquidityDepth(routes: Array<{ source: AssetType; destination: AssetType }>): Promise<LiquidityDepthType[]> {
+  async getLiquidityDepth(routes: RouteType<ProviderAssetType>[]): Promise<LiquidityDepthType<ProviderAssetType>[]> {
     return [];
   }
 
   /**
-   * Fetch list of assets supported by the provider.
-   * TODO: Implement provider's assets API endpoint
-   */
-  private async getListedAssets(): Promise<ListedAssetsType> {
-    return {
-      assets: [],
-      measuredAt: new Date().toISOString(),
-    };
-  }
+ * Get complete snapshot of provider data for given provider-formatted routes and notionals.
+ * This is a coordinator method that calls the individual methods.
+ * Returns provider format - transformation to NEAR Intents happens in router layer.
+ */
+  async getSnapshot(params: {
+    routes: RouteType<ProviderAssetType>[];
+    notionals?: string[];
+    includeWindows?: TimeWindow[];
+  }): Promise<SnapshotType<ProviderAssetType>> {
+    const [volumes, listedAssets, rates, liquidity] = await Promise.all([
+      this.getVolumes(params.includeWindows || ["24h"]),
+      this.getListedAssets(),
+      params.notionals ? this.getRates(params.routes, params.notionals) : Promise.resolve([]),
+      this.getLiquidityDepth(params.routes)
+    ]);
 
-  ping() {
-    return Effect.tryPromise({
-      try: async () => {
-        return {
-          status: "ok" as const,
-          timestamp: new Date().toISOString(),
-        };
+    return {
+      volumes,
+      listedAssets: {
+        assets: listedAssets,
+        measuredAt: new Date().toISOString()
       },
-      catch: (error: unknown) => new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
-    });
+      ...(rates.length > 0 && { rates }),
+      ...(liquidity.length > 0 && { liquidity }),
+    };
   }
 }

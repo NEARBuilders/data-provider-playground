@@ -1,0 +1,23 @@
+{
+  "name": "@data-provider/plugin-utils",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http.ts",
+    "./decimal": "./src/decimal.ts"
+  },
+  "dependencies": {
+    "bottleneck": "^2.19.5",
+    "decimal.js": "^10.6.0",
+    "every-plugin": "^0.4.14",
+    "p-retry": "^6.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@data-provider/shared-contract": "workspace:*"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -8,10 +8,6 @@
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
-  "dependencies": {
-    "bottleneck": "^2.19.5",
-    "decimal.js": "^10.4.3"
-  },
   "devDependencies": {
     "@data-provider/shared-contract": "workspace:*",
     "@effect/language-service": "^0.41.1",
@@ -26,6 +22,9 @@
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4",
     "zephyr-rspack-plugin": "^0.0.59"
+  },
+  "dependencies": {
+    "@data-provider/plugin-utils": "workspace:*"
   },
   "scripts": {
     "build": "rspack build",

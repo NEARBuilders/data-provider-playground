@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "@wormhole-foundation/sdk": "^3.11.0"
+    "@wormhole-foundation/sdk": "^3.11.0",
+    "@data-provider/plugin-utils": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

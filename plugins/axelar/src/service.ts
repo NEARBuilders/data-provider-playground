@@ -1,60 +1,14 @@
 import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
+import { createHttpClient, createRateLimiter, getChainId } from '@data-provider/plugin-utils';
 import { AxelarQueryAPI, Environment } from "@axelar-network/axelarjs-sdk";
-
 import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
-
-/**
- * Token Bucket Rate Limiter
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-
-  constructor(
-    private readonly maxTokens: number,
-    private readonly refillRate: number
-  ) {
-    this.tokens = maxTokens;
-    this.lastRefill = Date.now();
-  }
-
-  async acquire(): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= 1) {
-      this.tokens -= 1;
-      return;
-    }
-
-    const waitTime = (1 / this.refillRate) * 1000;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-    this.tokens = 0;
-  }
-
-  private refill(): void {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.refillRate;
-
-    this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
-}
+  AssetType,
+  RateType,
+  LiquidityDepthType,
+  VolumeWindowType,
+  ListedAssetsType,
+  ProviderSnapshotType
+} from '@data-provider/shared-contract';
 
 /**
  * Official Axelarscan API Response Types
@@ -112,6 +66,14 @@ interface AxelarscanVolumeResponse {
   value: number;
 }
 
+interface DefiLlamaBridgeResponse {
+  id: string;
+  displayName: string;
+  lastDailyVolume: number;
+  weeklyVolume: number;
+  monthlyVolume: number;
+}
+
 /**
  * Fully Dynamic Axelar Data Provider Service
  * 
@@ -126,27 +88,44 @@ interface AxelarscanVolumeResponse {
  * Source: https://docs.axelarscan.io/
  */
 export class DataProviderService {
-  private rateLimiter: RateLimiter;
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAYS = [1000, 2000, 4000];
+  private readonly AXELAR_BRIDGE_ID = "17"; // Axelar bridge ID on DefiLlama
+  private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
+
   private axelarQueryAPI: AxelarQueryAPI;
   private chainsCache: AxelarscanChain[] | null = null;
   private chainIdToNameMap: Map<string, string> | null = null;
   private assetsCache: AxelarscanAsset[] | null = null;
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
 
   // Base URLs for Axelarscan API
   private readonly axelarscanBaseUrl = "https://api.axelarscan.io";
 
   constructor(
     private readonly baseUrl: string,
+    private readonly defillamaBaseUrl: string,
     private readonly apiKey: string,
-    private readonly timeout: number
+    private readonly timeout: number,
+    maxRequestsPerSecond: number = 10
   ) {
-    const maxRequestsPerSecond = parseInt(
-      process.env.MAX_REQUESTS_PER_SECOND || "10",
-      10
-    );
-    this.rateLimiter = new RateLimiter(maxRequestsPerSecond, maxRequestsPerSecond);
+    // Initialize HTTP client with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.axelarscanBaseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3
+    });
+
+    // Initialize DefiLlama HTTP client
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.defillamaBaseUrl,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
 
     const environment = baseUrl.includes('testnet')
       ? Environment.TESTNET
@@ -156,30 +135,82 @@ export class DataProviderService {
     console.log(`[Axelar] Initialized SDK for ${environment}`);
   }
 
+  /**
+   * Convert NEAR Intents asset format to Axelar chain name format.
+   * Axelar uses chain names (e.g., "ethereum", "polygon") instead of chain IDs.
+   */
+  private async assetToProviderFormat(asset: AssetType): Promise<any | null> {
+    const chainId = await getChainId(asset.blockchain);
+    if (!chainId) {
+      console.warn(`[Axelar] Chain not found for blockchain: ${asset.blockchain}`);
+      return null;
+    }
+
+    // Get chain name from Axelarscan API
+    const chains = await this.fetchChainsWithRetry();
+    const chain = chains.find(c => c.chain_id?.toString() === chainId.toString());
+    if (!chain) {
+      console.warn(`[Axelar] Chain name not found for chainId: ${chainId}`);
+      return null;
+    }
+
+    return {
+      chainName: chain.chain_name,
+      address: asset.contractAddress,
+      symbol: asset.symbol,
+      decimals: asset.decimals
+    };
+  }
+
+  /**
+   * Map routes from NEAR Intents format to Axelar format.
+   * Filters out routes where asset mapping fails.
+   */
+  private async mapRoutes(
+    routes: Array<{ source: AssetType; destination: AssetType }>
+  ): Promise<Array<{ source: any; destination: any }>> {
+    const mapped = await Promise.all(
+      routes.map(async route => ({
+        source: await this.assetToProviderFormat(route.source),
+        destination: await this.assetToProviderFormat(route.destination)
+      }))
+    );
+
+    return mapped.filter(r => r.source && r.destination);
+  }
+
   getSnapshot(params: {
-    routes: Array<{ source: AssetType; destination: AssetType }>;
-    notionals: string[];
+    routes?: Array<{ source: AssetType; destination: AssetType }>;
+    notionals?: string[];
     includeWindows?: Array<"24h" | "7d" | "30d">;
   }) {
     return Effect.tryPromise({
       try: async () => {
-        console.log(`[Axelar] Fetching snapshot for ${params.routes.length} routes`);
+        const hasRoutes = params.routes && params.routes.length > 0;
+        const hasNotionals = params.notionals && params.notionals.length > 0;
+
+        console.log(`[Axelar] Fetching snapshot for ${params.routes?.length || 0} routes`);
+
+        // Map routes once at entry point
+        const mappedRoutes = hasRoutes
+          ? await this.mapRoutes(params.routes!)
+          : [];
 
         // Fetch assets first since rates depend on the assets cache
         const listedAssets = await this.getListedAssets();
 
         const [volumes, rates, liquidity] = await Promise.all([
           this.getVolumes(params.includeWindows || ["24h"]),
-          this.getRates(params.routes, params.notionals),
-          this.getLiquidityDepth(params.routes)
+          mappedRoutes.length > 0 && hasNotionals ? this.getRates(mappedRoutes, params.notionals!) : Promise.resolve([]),
+          mappedRoutes.length > 0 ? this.getLiquidityDepth(mappedRoutes) : Promise.resolve([])
         ]);
 
         return {
           volumes,
-          rates,
-          liquidity,
           listedAssets,
-        } satisfies ProviderSnapshotType;
+          ...(rates.length > 0 && { rates }),
+          ...(liquidity.length > 0 && { liquidity }),
+        };
       },
       catch: (error: unknown) =>
         new Error(`Failed to fetch snapshot: ${error instanceof Error ? error.message : String(error)}`)
@@ -187,44 +218,45 @@ export class DataProviderService {
   }
 
   /**
-   * REAL volumes from Axelarscan API /interchainTotalVolume
-   * Source: https://docs.axelarscan.io/ - interchainTotalVolume endpoint
+   * Fetch volume metrics from DefiLlama bridge aggregator.
    */
   private async getVolumes(windows: Array<"24h" | "7d" | "30d">): Promise<VolumeWindowType[]> {
-    const volumes: VolumeWindowType[] = [];
-    const measuredAt = new Date().toISOString();
-    const now = Math.floor(Date.now() / 1000);
-
-    const timeRanges: Record<string, { fromTime: number; toTime: number }> = {
-      "24h": { fromTime: now - 24 * 60 * 60, toTime: now },
-      "7d": { fromTime: now - 7 * 24 * 60 * 60, toTime: now },
-      "30d": { fromTime: now - 30 * 24 * 60 * 60, toTime: now },
-    };
-
-    for (const window of windows) {
-      const range = timeRanges[window];
-      if (!range) {
-        console.warn(`[Axelar] Invalid time window: ${window}`);
-        continue;
+    try {
+      const bridgeData = await this.fetchDefiLlamaVolumes();
+      if (!bridgeData) {
+        console.warn("[Axelar] No volume data available from DefiLlama");
+        return [];
       }
-      try {
-        const volumeUsd = await this.fetchInterchainVolumeWithRetry(
-          range.fromTime,
-          range.toTime
-        );
-        volumes.push({
-          window,
-          volumeUsd,
-          measuredAt,
-        });
-        console.log(`[Axelar] Real volume for ${window}: $${volumeUsd.toLocaleString()}`);
-      } catch (error) {
-        console.error(`[Axelar] Failed to fetch volume for ${window}:`, error);
-        throw error;
+
+      const volumes: VolumeWindowType[] = [];
+      const now = new Date().toISOString();
+
+      for (const window of windows) {
+        let volumeUsd: number;
+        switch (window) {
+          case "24h":
+            volumeUsd = bridgeData.lastDailyVolume || 0;
+            break;
+          case "7d":
+            volumeUsd = bridgeData.weeklyVolume || 0;
+            break;
+          case "30d":
+            volumeUsd = bridgeData.monthlyVolume || 0;
+            break;
+        }
+        volumes.push({ window, volumeUsd, measuredAt: now });
+        console.log(`[Axelar] Volume ${window}: $${volumeUsd.toLocaleString()}`);
       }
+      return volumes;
+    } catch (error) {
+      console.error("[Axelar] Failed to fetch volumes from DefiLlama:", error);
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
-
-    return volumes;
   }
 
   /**
@@ -499,8 +531,6 @@ export class DataProviderService {
     }
   }
 
-
-
   // ===== API Fetch Methods with Retry =====
 
   /**
@@ -512,49 +542,21 @@ export class DataProviderService {
       return this.chainsCache;
     }
 
-    let lastError: Error | null = null;
+    try {
+      const chains = await this.http.get<AxelarscanChain[]>('/api/getChains');
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.axelarscanBaseUrl}/api/getChains`;
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const chains = await response.json();
-
-        if (!Array.isArray(chains) || chains.length === 0) {
-          throw new Error("Invalid chains response");
-        }
-
-        this.chainsCache = chains;
-        console.log(`[Axelar] Fetched ${chains.length} chains from API`);
-        return chains;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[Axelar] Chains fetch attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, this.RETRY_DELAYS[attempt]));
-        }
+      if (!Array.isArray(chains) || chains.length === 0) {
+        throw new Error("Invalid chains response");
       }
-    }
 
-    throw lastError || new Error("Failed to fetch chains");
+      this.chainsCache = chains;
+      console.log(`[Axelar] Fetched ${chains.length} chains from API`);
+      return chains;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[Axelar] Chains fetch failed:`, message);
+      throw error;
+    }
   }
 
   /**
@@ -566,54 +568,26 @@ export class DataProviderService {
       return this.assetsCache;
     }
 
-    let lastError: Error | null = null;
+    try {
+      // Assert the JSON to the expected asset shape (single or array) so we can safely use array ops
+      let assets = await this.http.get<AxelarscanAsset | AxelarscanAsset[]>('/api/getAssets');
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.axelarscanBaseUrl}/api/getAssets`;
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        // Assert the JSON to the expected asset shape (single or array) so we can safely use array ops
-        let assets = (await response.json()) as AxelarscanAsset | AxelarscanAsset[];
-
-        if (!Array.isArray(assets)) {
-          assets = [assets];
-        }
-
-        if (assets.length === 0) {
-          throw new Error("API returned empty asset list");
-        }
-
-        this.assetsCache = assets;
-        console.log(`[Axelar] Fetched ${assets.length} assets from API`);
-        return assets;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[Axelar] Assets fetch attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, this.RETRY_DELAYS[attempt]));
-        }
+      if (!Array.isArray(assets)) {
+        assets = [assets];
       }
-    }
 
-    throw lastError || new Error("Failed to fetch assets");
+      if (assets.length === 0) {
+        throw new Error("API returned empty asset list");
+      }
+
+      this.assetsCache = assets;
+      console.log(`[Axelar] Fetched ${assets.length} assets from API`);
+      return assets;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[Axelar] Assets fetch failed:`, message);
+      throw error;
+    }
   }
 
   /**
@@ -624,48 +598,19 @@ export class DataProviderService {
     fromTime: number,
     toTime: number
   ): Promise<number> {
-    let lastError: Error | null = null;
+    try {
+      const data = await this.http.post<any>('/token/transfersTotalVolume', {
+        body: { fromTime, toTime }
+      });
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.axelarscanBaseUrl}/token/transfersTotalVolume`;
-
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ fromTime, toTime }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (data === null || data === undefined) return 0;
-        const volume = typeof data === 'object' && 'value' in data ? data.value : data;
-        return Number(volume) || 0;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[Axelar] Volume fetch attempt ${attempt + 1} failed:`, lastError.message);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, this.RETRY_DELAYS[attempt]));
-        }
-      }
+      if (data === null || data === undefined) return 0;
+      const volume = typeof data === 'object' && 'value' in data ? data.value : data;
+      return Number(volume) || 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[Axelar] Volume fetch failed:`, message);
+      throw error;
     }
-
-    throw lastError || new Error("Failed to fetch volume");
   }
 
   /**
@@ -673,46 +618,17 @@ export class DataProviderService {
    * Source: https://docs.axelarscan.io/axelarscan#gettvl
    */
   private async fetchTVLWithRetry(assetSymbol: string): Promise<AxelarscanTVLResponse['data'][0] | null> {
-    let lastError: Error | null = null;
+    try {
+      const result = await this.http.post<AxelarscanTVLResponse>('/api/getTVL', {
+        body: { asset: assetSymbol }
+      });
 
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const url = `${this.axelarscanBaseUrl}/api/getTVL`;
-
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ asset: assetSymbol }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const result = await response.json() as AxelarscanTVLResponse;
-        return result.data?.[0] || null;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.warn(`[Axelar] TVL fetch for ${assetSymbol} attempt ${attempt + 1} failed`);
-
-        if (attempt < this.MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, this.RETRY_DELAYS[attempt]));
-        }
-      }
+      return result.data?.[0] || null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[Axelar] TVL fetch for ${assetSymbol} failed:`, message);
+      return null;
     }
-
-    return null;
   }
 
   /**
@@ -737,10 +653,48 @@ export class DataProviderService {
     return mapping;
   }
 
+  /**
+   * Fetch volume data from DefiLlama Bridge API with caching and retry logic.
+   */
+  private async fetchDefiLlamaVolumes(): Promise<DefiLlamaBridgeResponse | null> {
+    // Check cache first
+    if (this.volumeCache && (Date.now() - this.volumeCache.fetchedAt) < this.VOLUME_CACHE_TTL) {
+      console.log("[Axelar] Using cached volume data from DefiLlama");
+      return this.volumeCache.data;
+    }
+
+    try {
+      const data = await this.defillamaHttp.get<DefiLlamaBridgeResponse>(`/bridge/${this.AXELAR_BRIDGE_ID}`);
+
+      // Validate response has expected fields
+      if (typeof data.lastDailyVolume !== 'number') {
+        throw new Error("Invalid response structure from DefiLlama");
+      }
+
+      // Cache the result
+      this.volumeCache = {
+        data,
+        fetchedAt: Date.now(),
+      };
+
+      console.log(`[Axelar] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
+      return data;
+    } catch (error) {
+      console.error(`[Axelar] Failed to fetch volumes from DefiLlama:`, error instanceof Error ? error.message : String(error));
+
+      // Cache the null result to avoid hammering the API
+      this.volumeCache = {
+        data: null,
+        fetchedAt: Date.now(),
+      };
+
+      return null;
+    }
+  }
+
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        console.log("[Axelar] Ping - service ready");
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),

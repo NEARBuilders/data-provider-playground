@@ -5,10 +5,11 @@ import { z } from "every-plugin/zod";
 // --- Schemas ---
 
 export const Asset = z.object({
-  chainId: z.string(),
-  assetId: z.string(),
+  blockchain: z.string(),
+  assetId: z.string(), // intents API
   symbol: z.string(),
   decimals: z.number().int().min(0),
+  contractAddress: z.string(),
 });
 
 export const Rate = z.object({
@@ -43,16 +44,79 @@ export const ListedAssets = z.object({
   measuredAt: z.iso.datetime(),
 });
 
-export const ProviderSnapshot = z.object({
+export const Snapshot = z.object({
   volumes: z.array(VolumeWindow),
   listedAssets: ListedAssets,
   rates: z.array(Rate).optional(),
   liquidity: z.array(LiquidityDepth).optional(),
 });
 
+export const Route = z.object({
+  source: Asset,
+  destination: Asset,
+});
+
+// --- Generic Types (for service layer) ---
+
+export type AssetType = z.infer<typeof Asset>;
+export type RouteType<TAsset> = { source: TAsset; destination: TAsset };
+export type RateType<TAsset> = {
+  source: TAsset;
+  destination: TAsset;
+  amountIn: string;
+  amountOut: string;
+  effectiveRate: number;
+  totalFeesUsd: number | null;
+  quotedAt: string;
+};
+export type LiquidityDepthType<TAsset> = {
+  route: RouteType<TAsset>;
+  thresholds: Array<{
+    maxAmountIn: string;
+    slippageBps: number;
+  }>;
+  measuredAt: string;
+};
+export type VolumeWindowType = z.infer<typeof VolumeWindow>;
+export type TimeWindow = "24h" | "7d" | "30d";
+export type ListedAssetsType = z.infer<typeof ListedAssets>;
+export type SnapshotType = z.infer<typeof Snapshot>;
+
 // --- Contract ---
 
 export const contract = oc.router({
+  // Individual routes - no middleware, expect provider format
+  getVolumes: oc
+    .route({ method: 'POST', path: '/volumes' })
+    .input(z.object({
+      includeWindows: z.array(z.enum(["24h", "7d", "30d"])).default(["24h"]).optional(),
+    }))
+    .output(z.object({ volumes: z.array(VolumeWindow) }))
+    .errors(CommonPluginErrors),
+
+  getListedAssets: oc
+    .route({ method: 'GET', path: '/assets' })
+    .output(ListedAssets)
+    .errors(CommonPluginErrors),
+
+  getRates: oc
+    .route({ method: 'POST', path: '/rates' })
+    .input(z.object({
+      routes: z.array(Route),
+      notionals: z.array(z.string()),
+    }))
+    .output(z.object({ rates: z.array(Rate) }))
+    .errors(CommonPluginErrors),
+
+  getLiquidity: oc
+    .route({ method: 'POST', path: '/liquidity' })
+    .input(z.object({
+      routes: z.array(Route),
+    }))
+    .output(z.object({ liquidity: z.array(LiquidityDepth) }))
+    .errors(CommonPluginErrors),
+
+  // Composite route - with middleware, accepts NEAR Intents format
   getSnapshot: oc
     .route({ method: "POST", path: "/snapshot" })
     .input(z.object({
@@ -61,7 +125,7 @@ export const contract = oc.router({
       includeWindows: z.array(z.enum(["24h", "7d", "30d"]))
         .default(["24h"]).optional(),
     }))
-    .output(ProviderSnapshot)
+    .output(Snapshot)
     .errors(CommonPluginErrors),
 
   ping: oc

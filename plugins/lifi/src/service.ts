@@ -1,21 +1,14 @@
+import { calculateEffectiveRate, createHttpClient, createRateLimiter } from '@data-provider/plugin-utils';
+import type {
+  AssetType,
+  LiquidityDepthType,
+  ListedAssetsType,
+  ProviderSnapshotType,
+  RateType,
+  VolumeWindowType
+} from '@data-provider/shared-contract';
 import Decimal from "decimal.js";
 import { Effect } from "every-plugin/effect";
-import type { z } from "every-plugin/zod";
-
-// Import types from contract
-import type {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-// Import utilities
-import { DecimalUtils } from "./utils/decimal";
-import { HttpUtils } from "./utils/http";
-import { LiquidityProber } from "./utils/liquidity";
 
 interface LiFiToken {
   chainId: number;
@@ -55,14 +48,6 @@ interface LiFiTransfersResponse {
   next?: string;
 }
 
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
-
 /**
  * Li.Fi Data Provider Service - Collects cross-chain bridge metrics from Li.Fi API.
  */
@@ -70,65 +55,31 @@ export class DataProviderService {
   // Simple in-memory cache for volumes (1 hour TTL - reduce API calls)
   private volumeCache: Map<string, { data: VolumeWindowType[]; timestamp: number }> = new Map();
   private readonly VOLUME_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+  private http: ReturnType<typeof createHttpClient>;
+  private analyticsHttp: ReturnType<typeof createHttpClient>;
 
   constructor(
-    private readonly baseUrl: string
-  ) { }
+    private readonly baseUrl: string,
+    maxRequestsPerSecond: number = 10
+  ) {
+    // Initialize HTTP clients with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.baseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: 10000, // 10 second timeout
+      retries: 1 // Single retry as per Li.Fi config
+    });
 
-  private getRetryConfig() {
-    // Li.Fi uses sensible defaults for retry logic
-    // Single retry with 200ms base delay for timeout-aware behavior
-    const maxRetries = 1;
-    const baseDelay = 200;
-
-    return { maxRetries, baseDelay } as const;
+    // Separate client for v2 analytics endpoint
+    this.analyticsHttp = createHttpClient({
+      baseUrl: this.baseUrl.replace('/v1', '/v2'),
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: 10000,
+      retries: 1
+    });
   }
 
-  private async fetchWithRetry<T>(url: string, options: RequestInit = {}): Promise<T> {
-    const { maxRetries, baseDelay } = this.getRetryConfig();
-    return HttpUtils.fetchWithRetry<T>(url, options, maxRetries, baseDelay);
-  }
 
-  private createFallbackRate(
-    route: { source: AssetType; destination: AssetType },
-    notional: string
-  ): RateType {
-    const timestamp = new Date().toISOString();
-
-    try {
-      const sourceDecimals = Number.isFinite(route.source.decimals) ? route.source.decimals : 0;
-      const destinationDecimals = Number.isFinite(route.destination.decimals) ? route.destination.decimals : 0;
-
-      const normalizedIn = new Decimal(notional).div(new Decimal(10).pow(sourceDecimals));
-
-      if (normalizedIn.isZero()) {
-        throw new Error('Fallback notional resolved to zero');
-      }
-
-      const normalizedOut = normalizedIn;
-      const rawOut = normalizedOut.mul(new Decimal(10).pow(destinationDecimals));
-
-      return {
-        source: route.source,
-        destination: route.destination,
-        amountIn: notional,
-        amountOut: rawOut.toFixed(0, Decimal.ROUND_DOWN),
-        effectiveRate: normalizedOut.div(normalizedIn).toNumber(),
-  totalFeesUsd: 0,
-        quotedAt: timestamp,
-      } satisfies RateType;
-    } catch {
-      return {
-        source: route.source,
-        destination: route.destination,
-        amountIn: notional,
-        amountOut: notional,
-        effectiveRate: 1,
-  totalFeesUsd: 0,
-        quotedAt: timestamp,
-      } satisfies RateType;
-    }
-  }
 
   /**
    * Get complete snapshot of provider data for given routes and notionals.
@@ -198,7 +149,7 @@ export class DataProviderService {
     // Check cache first
     const cacheKey = windows.sort().join(",");
     const cached = this.volumeCache.get(cacheKey);
-    
+
     if (cached && Date.now() - cached.timestamp < this.VOLUME_CACHE_TTL) {
       console.log(`✓ Using cached volumes for windows: ${cacheKey}`);
       return cached.data;
@@ -223,36 +174,32 @@ export class DataProviderService {
         }
 
         const fromTimestamp = now - duration;
-        
+
         // Aggregate transfers for this window using V2 endpoint with pagination
         let totalVolume = new Decimal(0);
         let cursor: string | undefined = undefined;
         let hasMore = true;
         let pageCount = 0;
-        const MAX_PAGES_PER_WINDOW = 8; 
-        const LIMIT_PER_PAGE = 1000; 
+        const MAX_PAGES_PER_WINDOW = 8;
+        const LIMIT_PER_PAGE = 1000;
 
         console.log(`[${window}] Fetching from v2 endpoint...`);
 
         while (hasMore && pageCount < MAX_PAGES_PER_WINDOW) {
           try {
-            // Use v2 endpoint for analytics/transfers with proper pagination
-            const baseAnalyticsUrl = this.baseUrl.replace('/v1', '/v2');
-            const url = new URL(`${baseAnalyticsUrl}/analytics/transfers`);
-            url.searchParams.set("status", "DONE");
-            url.searchParams.set("fromTimestamp", String(fromTimestamp));
-            url.searchParams.set("toTimestamp", String(now));
-            url.searchParams.set("limit", String(LIMIT_PER_PAGE)); // Batch larger requests
-            
-            if (cursor) {
-              url.searchParams.set("next", cursor);
-            }
-
-            const response = await this.fetchWithRetry<LiFiTransfersResponse>(url.toString());
+            const response: LiFiTransfersResponse = await this.analyticsHttp.get<LiFiTransfersResponse>('/analytics/transfers', {
+              params: {
+                status: "DONE",
+                fromTimestamp: String(fromTimestamp),
+                toTimestamp: String(now),
+                limit: String(LIMIT_PER_PAGE),
+                ...(cursor && { next: cursor })
+              }
+            });
 
             // Handle both v1 (transfers) and v2 (data) response formats
             const transfersList = response?.data || response?.transfers || [];
-            
+
             if (Array.isArray(transfersList)) {
               for (const transfer of transfersList) {
                 // Sum USD amounts from receiving side (destination amount in USD)
@@ -273,7 +220,7 @@ export class DataProviderService {
               await new Promise(resolve => setTimeout(resolve, 500)); // 500ms spacing between requests
             }
           } catch (pageError) {
-            console.warn(`  [page ${pageCount}] Error:`, 
+            console.warn(`  [page ${pageCount}] Error:`,
               pageError instanceof Error ? pageError.message : "Unknown error");
             // If first page fails, propagate the error
             if (pageCount === 0) {
@@ -292,16 +239,16 @@ export class DataProviderService {
           volumeUsd: totalVolume.toNumber(),
           measuredAt: new Date().toISOString(),
         });
-      } catch (error) {
-        console.error(`Failed to fetch volume for window ${window}:`, 
-          error instanceof Error ? error.message : "Unknown error");
-        // Return zero for this window but continue with others
-        volumes.push({
-          window,
-          volumeUsd: 0,
-          measuredAt: new Date().toISOString(),
-        });
-      }
+    } catch (error) {
+      console.error(`Failed to fetch volume for window ${window}:`,
+        error instanceof Error ? error.message : "Unknown error");
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
+    }
     }
 
     // Cache the result
@@ -332,21 +279,25 @@ export class DataProviderService {
         }
 
         try {
-          const url = new URL(`${this.baseUrl}/quote`);
-          url.searchParams.set('fromChain', route.source.chainId);
-          url.searchParams.set('toChain', route.destination.chainId);
-          url.searchParams.set('fromToken', route.source.assetId);
-          url.searchParams.set('toToken', route.destination.assetId);
-          url.searchParams.set('fromAmount', notional);
+          const quote = await this.http.get<LiFiQuote>('/quote', {
+            params: {
+              fromChain: route.source.chainId,
+              toChain: route.destination.chainId,
+              fromToken: route.source.assetId,
+              toToken: route.destination.assetId,
+              fromAmount: notional
+            }
+          });
 
-          const quote = await this.fetchWithRetry<LiFiQuote>(url.toString());
-          
           if (!quote?.estimate) {
             throw new Error('Invalid quote response structure');
           }
 
-          const totalFeesUsd = DecimalUtils.sumFees(quote.estimate.feeCosts || []);
-          const effectiveRate = DecimalUtils.calculateEffectiveRate(
+          const totalFeesUsd = quote.estimate.feeCosts?.reduce((sum, fee) => {
+            return sum + (fee.amountUSD ? parseFloat(fee.amountUSD) : 0);
+          }, 0) || 0;
+
+          const effectiveRate = calculateEffectiveRate(
             quote.estimate.fromAmount,
             quote.estimate.toAmount,
             route.source.decimals,
@@ -364,7 +315,7 @@ export class DataProviderService {
           });
         } catch (error) {
           console.error('Failed to get rate for route:', { error: error instanceof Error ? error.message : 'Unknown error' });
-          rates.push(this.createFallbackRate(route, notional));
+          continue; // Skip failed quote, don't add fake data
         }
       }
     }
@@ -392,19 +343,48 @@ export class DataProviderService {
 
       try {
         const thresholds = [];
-        
+
         // Binary search for 50bps and 100bps thresholds
         for (const slippageBps of [50, 100]) {
           try {
-            const maxAmountIn = await LiquidityProber.findMaxLiquidity(
-              this.baseUrl,
-              route,
-              slippageBps,
-              3 // Limited iterations for performance
-            );
-            
+            const slippage = slippageBps / 10000; // Convert bps to decimal
+
+            // Start with reasonable bounds
+            let minAmount = new Decimal('1000000'); // 1 USDC (6 decimals)
+            let maxAmount = new Decimal('100000000000'); // 100k USDC
+            let bestAmount = minAmount;
+
+            for (let i = 0; i < 3; i++) { // Limited iterations for performance
+              const testAmount = minAmount.plus(maxAmount).div(2);
+
+              try {
+                await this.http.get('/quote', {
+                  params: {
+                    fromChain: route.source.chainId,
+                    toChain: route.destination.chainId,
+                    fromToken: route.source.assetId,
+                    toToken: route.destination.assetId,
+                    fromAmount: testAmount.toString(),
+                    slippage: slippage.toString()
+                  }
+                });
+
+                // Quote succeeded, try larger amount
+                bestAmount = testAmount;
+                minAmount = testAmount;
+              } catch {
+                // Quote failed, try smaller amount
+                maxAmount = testAmount;
+              }
+
+              // Convergence check
+              if (maxAmount.minus(minAmount).div(minAmount).lt(0.1)) {
+                break;
+              }
+            }
+
             thresholds.push({
-              maxAmountIn,
+              maxAmountIn: bestAmount.toString(),
               slippageBps,
             });
           } catch (error) {
@@ -432,16 +412,14 @@ export class DataProviderService {
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     try {
-      const tokens = await this.fetchWithRetry<{ tokens: Record<string, LiFiToken[]> }>(
-        `${this.baseUrl}/tokens`
-      );
+      const tokens = await this.http.get<{ tokens: Record<string, LiFiToken[]> }>('/tokens');
 
       if (!tokens?.tokens || typeof tokens.tokens !== 'object') {
         throw new Error('Invalid tokens response structure');
       }
 
       const assets: AssetType[] = [];
-      
+
       // Flatten tokens from all chains
       Object.entries(tokens.tokens).forEach(([chainId, chainTokens]) => {
         if (!Array.isArray(chainTokens)) {
@@ -473,18 +451,16 @@ export class DataProviderService {
     }
   }
 
-
-
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),
         };
       },
-      catch: (error: unknown) => new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
+      catch: (error: unknown) =>
+        new Error(`Health check failed: ${error instanceof Error ? error.message : String(error)}`)
     });
   }
 }

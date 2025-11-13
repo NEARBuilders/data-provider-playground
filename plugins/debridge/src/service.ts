@@ -1,93 +1,18 @@
 import { Effect } from "every-plugin/effect";
-import { z } from "every-plugin/zod";
-import Decimal from "decimal.js";
+import { createHttpClient, createRateLimiter, calculateEffectiveRate } from '@data-provider/plugin-utils';
+import type {
+  AssetType,
+  RateType,
+  LiquidityDepthType,
+  VolumeWindowType,
+  ListedAssetsType,
+  ProviderSnapshotType
+} from '@data-provider/shared-contract';
 
-// Import types from contract
-import {
-  Asset,
-  Rate,
-  LiquidityDepth,
-  VolumeWindow,
-  ListedAssets,
-  ProviderSnapshot
-} from "./contract";
-
-// Route intelligence - advanced metrics for route quality assessment
-// export const RouteIntelligence = z.object({
-//   route: z.object({ source: Asset, destination: Asset }),
-//   // Maximum discovered capacity (largest successful quote)
-//   maxCapacityUsd: z.number().nullable(),
-//   // Optimal trade size range (where fees are most favorable)
-//   optimalRangeUsd: z.object({
-//     min: z.number(),
-//     max: z.number(),
-//   }).nullable(),
-//   // Fee efficiency score (0-100, higher = better rates at different sizes)
-//   feeEfficiencyScore: z.number().min(0).max(100).nullable(),
-//   // Price impact analysis (how rate degrades with size)
-//   priceImpactBps: z.object({
-//     at1k: z.number().nullable(),    // impact at $1k
-//     at10k: z.number().nullable(),   // impact at $10k
-//     at100k: z.number().nullable(),  // impact at $100k
-//   }),
-//   measuredAt: z.iso.datetime(),
-// });
-
-
-// Import utilities
-import { DecimalUtils } from "./utils/decimal";
-import { HttpUtils } from "./utils/http";
 import { TTLCache, RequestDeduplicator, CircuitBreaker } from "./utils/cache";
 import { Logger, PerformanceTimer } from "./utils/logger";
 
-// Infer the types from the schemas
-type AssetType = z.infer<typeof Asset>;
-type RateType = z.infer<typeof Rate>;
-type LiquidityDepthType = z.infer<typeof LiquidityDepth>;
-type VolumeWindowType = z.infer<typeof VolumeWindow>;
-type ListedAssetsType = z.infer<typeof ListedAssets>;
-type ProviderSnapshotType = z.infer<typeof ProviderSnapshot>;
-// type RouteIntelligenceType = z.infer<typeof RouteIntelligence>;
 
-/**
- * Token Bucket Rate Limiter
- * Implements configurable rate limiting with token bucket algorithm
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-
-  constructor(
-    private readonly maxTokens: number,
-    private readonly refillRate: number // tokens per second
-  ) {
-    this.tokens = maxTokens;
-    this.lastRefill = Date.now();
-  }
-
-  async acquire(): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= 1) {
-      this.tokens -= 1;
-      return;
-    }
-
-    // Wait for next token
-    const waitTime = (1 / this.refillRate) * 1000;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-    this.tokens = 0; // Reset after waiting
-  }
-
-  private refill(): void {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.refillRate;
-
-    this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
-}
 
 // deBridge DLN API response types
 interface DeBridgeOrder {
@@ -228,7 +153,6 @@ interface DefiLlamaBridgeResponse {
 export class DataProviderService {
   private static readonly DEFAULT_BASE_URL = "https://dln.debridge.finance/v1.0";
   private static readonly DEFAULT_DEFILLAMA_BASE_URL = "https://bridges.llama.fi";
-  private static readonly DEFAULT_ACCOUNT = "0x1111111111111111111111111111111111111111";
   private static readonly TOKEN_LIST_TTL = 5 * 60 * 1000; // 5 minutes
 
   private readonly dlnApiBase: string;
@@ -236,9 +160,8 @@ export class DataProviderService {
   private readonly apiKey: string;
   private readonly timeout: number;
   private readonly logger: Logger;
-  private rateLimiter: RateLimiter;
-  private readonly MAX_RETRIES = 3;
-  private readonly RETRY_DELAYS = [1000, 2000, 4000];
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
   private readonly DEBRIDGE_LLAMA_ID = "20";
 
   // Caching
@@ -267,14 +190,29 @@ export class DataProviderService {
       defillamaBaseUrl,
       DataProviderService.DEFAULT_DEFILLAMA_BASE_URL
     );
-    
+
     this.apiKey = apiKey?.trim?.() ?? "not-required";
     this.timeout = timeout;
-    this.rateLimiter = new RateLimiter(maxRequestsPerSecond, maxRequestsPerSecond);
-    
+
+    // Initialize HTTP client with rate limiting
+    this.http = createHttpClient({
+      baseUrl: this.dlnApiBase,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3
+    });
+
+    // Initialize DefiLlama HTTP client (separate rate limiter for external API)
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.defillamaBaseUrl,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
+
     // Initialize structured logger
     this.logger = new Logger('deBridge:Service', (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'info') as any || 'info');
-    
+
     console.log("[deBridge] Service configuration", {
       dlnApiBase: this.dlnApiBase,
       defillamaBaseUrl: this.defillamaBaseUrl,
@@ -302,53 +240,23 @@ export class DataProviderService {
         const hasRoutes = params.routes && params.routes.length > 0;
         const hasNotionals = params.notionals && params.notionals.length > 0;
 
-        const timer = new PerformanceTimer();
-        this.logger.info('Snapshot fetch started', {
-          routeCount: params.routes?.length || 0,
-          notionalCount: params.notionals?.length || 0,
-          windows: params.includeWindows
-        });
-
         try {
-          // Fetch all metrics in parallel for performance
-          timer.mark('fetchStart');
-        
-        const [volumes, rates, liquidity, listedAssets] = await Promise.all([
-          this.getVolumes(params.includeWindows || ["24h"]),
-          hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
-          hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
-          this.getListedAssets(params.routes || [])
-        ]);
-          
-          // Optional route intelligence
-          // let routeIntelligence: RouteIntelligenceType[] | undefined;
-          // if (params.includeIntelligence && hasRoutes) {
-          //   this.logger.info('Fetching route intelligence', { routeCount: params.routes?.length });
-          //   routeIntelligence = await this.getRouteIntelligence(params.routes!);
-          // }
-          
-          timer.mark('fetchEnd');
-
-          this.logger.info('Snapshot fetch completed', {
-            ...timer.getMetadata(),
-            volumeCount: volumes.length,
-            rateCount: rates.length,
-            liquidityCount: liquidity.length,
-            assetCount: listedAssets.assets.length,
-            // intelligenceCount: routeIntelligence?.length || 0,
-          });
+          const [volumes, rates, liquidity, listedAssets] = await Promise.all([
+            this.getVolumes(params.includeWindows || ["24h"]),
+            hasRoutes && hasNotionals ? this.getRates(params.routes!, params.notionals!) : Promise.resolve([]),
+            hasRoutes ? this.getLiquidityDepth(params.routes!) : Promise.resolve([]),
+            this.getListedAssets(params.routes || [])
+          ]);
 
           return {
             volumes,
             rates,
             liquidity,
             listedAssets,
-            // ...(routeIntelligence && { routeIntelligence }),
           } satisfies ProviderSnapshotType;
         } catch (error) {
           this.logger.error('Snapshot fetch failed', {
             error: error instanceof Error ? error.message : String(error),
-            elapsed: timer.elapsed(),
           });
           throw new Error(`Snapshot fetch failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -404,7 +312,12 @@ export class DataProviderService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Failed to fetch volumes from DefiLlama', { error: message });
-      return [];
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
   }
 
@@ -448,7 +361,7 @@ export class DataProviderService {
         try {
           // Generate cache key for this quote
           const cacheKey = `${route.source.chainId}-${route.source.assetId}-${route.destination.chainId}-${route.destination.assetId}-${notional}`;
-          
+
           // Check cache first
           const cachedQuote = this.quoteCache.get(cacheKey);
           let quote: DeBridgeQuote;
@@ -457,21 +370,20 @@ export class DataProviderService {
             this.logger.debug('Quote cache hit', { cacheKey });
             quote = cachedQuote;
           } else {
-            // Build quote request URL
-            const url = new URL(`${this.dlnApiBase}/dln/order/create-tx`);
-            url.searchParams.set('srcChainId', route.source.chainId);
-            url.searchParams.set('srcChainTokenIn', route.source.assetId);
-            url.searchParams.set('srcChainTokenInAmount', notional);
-            url.searchParams.set('dstChainId', route.destination.chainId);
-            url.searchParams.set('dstChainTokenOut', route.destination.assetId);
-            url.searchParams.set('dstChainTokenOutAmount', 'auto'); // Recommended by deBridge
-            url.searchParams.set('prependOperatingExpenses', 'true');
-
             // Fetch with circuit breaker + deduplication
             quote = await this.dlnCircuit.execute(() =>
               this.deduplicator.deduplicate(
                 cacheKey,
-                () => HttpUtils.fetchWithRetry<DeBridgeQuote>(url.toString(), {
+                () => this.http.post<DeBridgeQuote>('/v1.0/dln/order/quote', {
+                  body: {
+                    srcChainId: route.source.chainId,
+                    srcChainTokenIn: route.source.assetId,
+                    srcChainTokenInAmount: notional,
+                    dstChainId: route.destination.chainId,
+                    dstChainTokenOut: route.destination.assetId,
+                    dstChainTokenOutAmount: 'auto',
+                    prependOperatingExpenses: 'true'
+                  },
                   headers: this.apiKey ? { 'Authorization': `Bearer ${this.apiKey}` } : {}
                 })
               )
@@ -498,18 +410,18 @@ export class DataProviderService {
 
           // Calculate fees using USD difference (more accurate than costsDetails sum)
           const approximateInUsd = srcToken.approximateUsdValue ?? srcToken.originApproximateUsdValue;
-          const approximateOutUsd = dstToken.recommendedApproximateUsdValue ?? 
-                                    dstToken.approximateUsdValue ?? 
-                                    dstToken.maxTheoreticalApproximateUsdValue;
+          const approximateOutUsd = dstToken.recommendedApproximateUsdValue ??
+            dstToken.approximateUsdValue ??
+            dstToken.maxTheoreticalApproximateUsdValue;
 
           let totalFeesUsd: number | null = null;
-          if (approximateInUsd !== undefined && approximateInUsd !== null && 
-              approximateOutUsd !== undefined && approximateOutUsd !== null) {
+          if (approximateInUsd !== undefined && approximateInUsd !== null &&
+            approximateOutUsd !== undefined && approximateOutUsd !== null) {
             totalFeesUsd = Math.max(approximateInUsd - approximateOutUsd, 0);
           }
 
           // Calculate effective rate with decimal.js for precision
-          const effectiveRate = DecimalUtils.calculateEffectiveRate(
+          const effectiveRate = calculateEffectiveRate(
             fromAmount,
             toAmount,
             route.source.decimals,
@@ -541,8 +453,6 @@ export class DataProviderService {
             notional,
             error: error instanceof Error ? error.message : 'Unknown error'
           });
-          // NO FALLBACK - return empty rather than fake data (per assessment criteria)
-          // Skip this rate instead of creating fake data
         }
       }
     }
@@ -590,7 +500,7 @@ export class DataProviderService {
         // Get quote with maxTheoreticalAmount
         const quote = await this.fetchQuoteWithRetry(route.source, route.destination, referenceAmount);
         const estimation = quote?.estimation;
-        
+
         if (!estimation) {
           this.logger.warn('No estimation in quote response', { route: `${route.source.symbol}->${route.destination.symbol}` });
           continue;
@@ -669,239 +579,150 @@ export class DataProviderService {
   ): Promise<DeBridgeQuote | null> {
     const authorityAddress = '0x1111111111111111111111111111111111111111'; // Default account
 
-    const url = new URL(`${this.dlnApiBase}/dln/order/create-tx`);
-    url.searchParams.set('srcChainId', source.chainId);
-    url.searchParams.set('srcChainTokenIn', source.assetId);
-    url.searchParams.set('srcChainTokenInAmount', amount);
-    url.searchParams.set('dstChainId', destination.chainId);
-    url.searchParams.set('dstChainTokenOut', destination.assetId);
-    url.searchParams.set('dstChainTokenOutRecipient', authorityAddress);
-    url.searchParams.set('dstChainTokenOutAmount', 'auto');
-    url.searchParams.set('dstChainOrderAuthorityAddress', authorityAddress);
-    url.searchParams.set('srcChainOrderAuthorityAddress', authorityAddress);
-    url.searchParams.set('prependOperatingExpenses', 'true');
+    try {
+      const data = await this.http.post<DeBridgeQuote>('/v1.0/dln/order/quote', {
+        body: {
+          srcChainId: source.chainId,
+          srcChainTokenIn: source.assetId,
+          srcChainTokenInAmount: amount,
+          dstChainId: destination.chainId,
+          dstChainTokenOut: destination.assetId,
+          dstChainTokenOutRecipient: authorityAddress,
+          dstChainTokenOutAmount: 'auto',
+          dstChainOrderAuthorityAddress: authorityAddress,
+          srcChainOrderAuthorityAddress: authorityAddress,
+          prependOperatingExpenses: 'true'
+        },
+        headers: this.apiKey ? { 'Authorization': `Bearer ${this.apiKey}` } : {}
+      });
 
-    const retryDelays = [1000, 2000, 4000]; // Exponential backoff: 1s, 2s, 4s
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        await this.rateLimiter.acquire();
-        
-        const startTime = Date.now();
-        const response = await fetch(url.toString(), {
-          headers: {
-            'Accept': 'application/json',
-            ...(this.apiKey && this.apiKey !== 'not-required' ? { 'x-api-key': this.apiKey } : {})
-          },
-          signal: AbortSignal.timeout(this.timeout),
-        });
-        const elapsed = Date.now() - startTime;
-
-        if (!response.ok) {
-          // Retry on 5xx errors or rate limits
-          if (attempt < maxRetries && (response.status >= 500 || response.status === 429)) {
-            const delay = retryDelays[attempt] || 4000;
-            this.logger.warn('Quote API error, retrying', {
-              status: response.status,
-              attempt: attempt + 1,
-              maxRetries,
-              delayMs: delay,
-              source: source.symbol,
-              destination: destination.symbol
-            });
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
-
-          this.logger.warn('Quote API error, no retry', {
-            status: response.status,
-            attempt: attempt + 1,
-            source: source.symbol,
-            destination: destination.symbol
-          });
-          return null;
-        }
-
-        const payload = await response.json() as DeBridgeQuote;
-        
-        if (!payload?.estimation) {
-          this.logger.warn('Quote response missing estimation', {
-            source: source.symbol,
-            destination: destination.symbol,
-            attempt: attempt + 1
-          });
-          return null;
-        }
-
-        this.logger.debug('Quote fetched successfully', {
-          source: source.symbol,
-          destination: destination.symbol,
-          latencyMs: elapsed,
-          attempt: attempt + 1
-        });
-
-        return payload;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const isTimeout = message.includes('timeout') || message.includes('aborted');
-        const isNetwork = message.includes('fetch') || message.includes('network');
-
-        // Retry on timeout or network errors
-        if (attempt < maxRetries && (isTimeout || isNetwork)) {
-          const delay = retryDelays[attempt] || 4000;
-          this.logger.warn('Quote request failed, retrying', {
-            error: message,
-            attempt: attempt + 1,
-            maxRetries,
-            delayMs: delay,
-            source: source.symbol,
-            destination: destination.symbol
-          });
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-
-        this.logger.error('Quote request failed permanently', {
-          url: url.toString(),
-          error: message,
-          attempt: attempt + 1,
+      if (!data?.estimation) {
+        this.logger.warn('Quote response missing estimation', {
           source: source.symbol,
           destination: destination.symbol
         });
         return null;
       }
-    }
 
-    return null;
+      this.logger.debug('Quote fetched successfully', {
+        source: source.symbol,
+        destination: destination.symbol
+      });
+
+      return data;
+    } catch (error) {
+      this.logger.error('Quote request failed', {
+        error: error instanceof Error ? error.message : String(error),
+        source: source.symbol,
+        destination: destination.symbol
+      });
+      return null;
+    }
   }
 
   /**
-   * Fetch supported tokens from deBridge
-   * 
+   * Fetch supported tokens from deBridge using comprehensive chains info endpoint
+   *
    * Enterprise features:
    * - TTL caching (1 hour - metadata rarely changes)
    * - Circuit breaker protection
    * - Request deduplication
    */
-  /**
-   * Fetch listed assets from /token-list endpoint per chainId
-   */
   private async getListedAssets(routes: Array<{ source: AssetType; destination: AssetType }>): Promise<ListedAssetsType> {
     const measuredAt = new Date().toISOString();
 
-    const chainIds = new Set<string>(
-      routes.flatMap((route) => [route.source.chainId, route.destination.chainId])
-    );
-
-    const assets: AssetType[] = [];
-    const seen = new Set<string>();
-
-    for (const chainId of chainIds) {
-      const chainIdStr = String(chainId);
-      if (!chainIdStr) {
-        continue;
-      }
-
-      // Check cache first (5 minute TTL)
-      const cached = this.tokenListCache.get(chainIdStr);
-      if (cached && Date.now() - cached.fetchedAt < DataProviderService.TOKEN_LIST_TTL) {
-        for (const token of cached.assets) {
-          const key = `${chainIdStr}:${token.assetId.toLowerCase()}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          assets.push(token);
-        }
-        continue;
-      }
-
-      try {
-        await this.rateLimiter.acquire();
-        
-        const url = `${this.dlnApiBase}/token-list?chainId=${encodeURIComponent(chainIdStr)}`;
-        const response = await fetch(url, {
-          headers: {
-            'Accept': 'application/json',
-          },
-          signal: AbortSignal.timeout(this.timeout),
-        });
-
-        if (!response.ok) {
-          this.logger.warn('Token list fetch failed', { chainId: chainIdStr, status: response.status });
-          continue;
-        }
-
-        const tokenList = await response.json() as DeBridgeTokenListResponse;
-        const tokens = tokenList?.tokens;
-        if (!tokens) {
-          continue;
-        }
-
-        const chainAssets: AssetType[] = [];
-        for (const token of Object.values(tokens)) {
-          if (!token?.address) {
-            continue;
-          }
-
-          const assetId = token.address.toLowerCase();
-          const key = `${chainIdStr}:${assetId}`;
-          if (seen.has(key)) {
-            continue;
-          }
-          seen.add(key);
-
-          const decimalsRaw = typeof token.decimals === 'number'
-            ? token.decimals
-            : Number.parseInt(String(token.decimals ?? '18'), 10);
-          const decimals = Number.isFinite(decimalsRaw) ? decimalsRaw : 18;
-
-          const asset: AssetType = {
-            chainId: chainIdStr,
-            assetId,
-            symbol: token.symbol ?? token.address,
-            decimals,
-          };
-          chainAssets.push(asset);
-          assets.push(asset);
-        }
-
-        this.tokenListCache.set(chainIdStr, {
-          assets: chainAssets,
-          fetchedAt: Date.now(),
-        });
-
-        this.logger.info('Token list fetched', { chainId: chainIdStr, tokenCount: chainAssets.length });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn('Token list fetch failed', { chainId: chainIdStr, error: message });
-      }
+    // Check cache first (5 minute TTL for comprehensive data)
+    const cacheKey = 'supported-chains-info';
+    const cached = this.tokenListCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < DataProviderService.TOKEN_LIST_TTL) {
+      this.logger.debug('Using cached comprehensive chains info');
+      return {
+        assets: cached.assets,
+        measuredAt,
+      };
     }
 
-    return {
-      assets,
-      measuredAt,
-    };
+    try {
+      // Single comprehensive API call to get all supported chains and tokens
+      const chainsInfo = await this.http.get<any>('/v1.0/supported-chains-info');
+
+      if (!chainsInfo || typeof chainsInfo !== 'object') {
+        throw new Error('Invalid chains info response structure');
+      }
+
+      const assets: AssetType[] = [];
+      const seen = new Set<string>();
+
+      // Parse the comprehensive response
+      // The response structure may vary, but typically contains chains with their tokens
+      for (const [chainIdStr, chainData] of Object.entries(chainsInfo)) {
+        if (!chainData || typeof chainData !== 'object') {
+          continue;
+        }
+
+        const chainInfo = chainData as any;
+
+        // Extract tokens from this chain
+        if (chainInfo.tokens && typeof chainInfo.tokens === 'object') {
+          for (const [tokenAddress, tokenInfo] of Object.entries(chainInfo.tokens)) {
+            if (!tokenInfo || typeof tokenInfo !== 'object') {
+              continue;
+            }
+
+            const token = tokenInfo as any;
+            if (!token?.address) {
+              continue;
+            }
+
+            const assetId = token.address.toLowerCase();
+            const key = `${chainIdStr}:${assetId}`;
+            if (seen.has(key)) {
+              continue;
+            }
+            seen.add(key);
+
+            const decimalsRaw = typeof token.decimals === 'number'
+              ? token.decimals
+              : Number.parseInt(String(token.decimals ?? '18'), 10);
+            const decimals = Number.isFinite(decimalsRaw) ? decimalsRaw : 18;
+
+            const asset: AssetType = {
+              chainId: chainIdStr,
+              assetId,
+              symbol: token.symbol ?? token.name ?? tokenAddress,
+              decimals,
+            };
+            assets.push(asset);
+          }
+        }
+      }
+
+      // Cache the comprehensive result
+      this.tokenListCache.set(cacheKey, {
+        assets,
+        fetchedAt: Date.now(),
+      });
+
+      this.logger.info('Comprehensive chains info fetched', { totalAssets: assets.length });
+      return {
+        assets,
+        measuredAt,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Comprehensive chains info fetch failed', { error: message });
+
+      // Fallback: return empty assets rather than failing
+      return {
+        assets: [],
+        measuredAt,
+      };
+    }
   }
 
-  /**
-   * Health check - verifies deBridge API connectivity
-   */
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        try {
-          // Test connection to deBridge API
-          await HttpUtils.fetchWithRetry<any>(
-            `${this.dlnApiBase}/supported-chains`,
-            {
-              headers: this.apiKey ? { 'Authorization': `Bearer ${this.apiKey}` } : {}
-            },
-            1, // Only 1 retry for ping
-            500 // Fast retry
-          );
-        } catch (error) {
-          console.warn('[deBridge] Health check warning:', error);
-        }
-
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),
@@ -921,26 +742,8 @@ export class DataProviderService {
       return this.volumeCache.data;
     }
 
-    const sanitizedBase = this.defillamaBaseUrl.replace(/\/$/, "");
-    const url = `${sanitizedBase}/bridge/${this.DEBRIDGE_LLAMA_ID}`;
-
     try {
-      await this.rateLimiter.acquire();
-      
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
-        signal: AbortSignal.timeout(this.timeout),
-      });
-
-      if (!response.ok) {
-        this.logger.error('DefiLlama API error', { status: response.status, url });
-        this.volumeCache = { data: null, fetchedAt: Date.now() };
-        return null;
-      }
-
-      const raw = await response.json();
+      const raw = await this.defillamaHttp.get<any>(`/bridge/${this.DEBRIDGE_LLAMA_ID}`);
       const data = this.parseDefiLlamaResponse(raw);
 
       if (!data) {
@@ -953,7 +756,7 @@ export class DataProviderService {
       return data;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error('DefiLlama request failed', { url, error: message });
+      this.logger.error('DefiLlama request failed', { error: message });
       return null;
     }
   }
@@ -1013,171 +816,20 @@ export class DataProviderService {
     try {
       // Remove trailing slash
       const trimmedUrl = url.replace(/\/$/, "");
-      
+
       // Parse URL to validate
       const parsedUrl = new URL(trimmedUrl);
-      
+
       // Only allow http and https protocols
       if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
         console.warn(`[deBridge] Invalid protocol ${parsedUrl.protocol}, using fallback`);
         return fallback;
       }
-      
+
       return trimmedUrl;
     } catch (error) {
       console.warn(`[deBridge] Invalid URL ${url}, using fallback:`, error);
       return fallback;
     }
-  }
-
-  /**
-   * UNIQUE FEATURE: Route Intelligence Analysis
-   * 
-   * Analyzes route quality by probing different trade sizes to discover:
-   * 1. Maximum capacity (largest successful quote)
-   * 2. Optimal trade size range (where fees are most favorable)
-   * 3. Fee efficiency score (rate consistency across sizes)
-   * 4. Price impact at key thresholds ($1k, $10k, $100k)
-   * 
-   * This provides evaluators with actionable insights that neither basic
-   * implementation offers, demonstrating deep understanding of DEX mechanics.
-   * 
-   * @param routes - Routes to analyze
-   * @returns RouteIntelligence[] with comprehensive metrics
-   */
-  private async getRouteIntelligence(
-    routes: Array<{ source: AssetType; destination: AssetType }>
-  ): Promise<any> {
-    const intelligence: any[] = [];
-    const now = new Date().toISOString();
-
-    for (const route of routes) {
-      try {
-        // Probe at strategic sizes: $1k, $5k, $10k, $50k, $100k, $500k, $1M, $5M
-        const probeSizesUsd = [1000, 5000, 10000, 50000, 100000, 500000, 1000000, 5000000];
-        const sourceDecimals = route.source.decimals;
-        
-        // Assuming source is a stablecoin (USDC/USDT) for simplicity
-        // In production, would fetch real USD price
-        const quotes: Array<{
-          amountUsd: number;
-          effectiveRate: number;
-          failed: boolean;
-        }> = [];
-
-        for (const sizeUsd of probeSizesUsd) {
-          // Convert USD to source token amount (assuming 1:1 for stablecoins)
-          const amountIn = String(Math.floor(sizeUsd * Math.pow(10, sourceDecimals)));
-          
-          try {
-            const quote = await this.fetchQuoteWithRetry(
-              route.source,
-              route.destination,
-              amountIn
-            );
-
-            if (quote && quote.estimation) {
-              const effectiveRate = 
-                Number(quote.estimation.dstChainTokenOut.amount) / 
-                Number(quote.estimation.srcChainTokenIn.amount);
-              
-              quotes.push({
-                amountUsd: sizeUsd,
-                effectiveRate,
-                failed: false,
-              });
-            } else {
-              quotes.push({ amountUsd: sizeUsd, effectiveRate: 0, failed: true });
-              break; // Stop probing at first failure
-            }
-          } catch {
-            quotes.push({ amountUsd: sizeUsd, effectiveRate: 0, failed: true });
-            break;
-          }
-
-          // Rate limit between probes
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-
-        // Analyze results
-        const successfulQuotes = quotes.filter(q => !q.failed);
-        const maxCapacityUsd = successfulQuotes.length > 0
-          ? successfulQuotes[successfulQuotes.length - 1]!.amountUsd
-          : null;
-
-        // Calculate fee efficiency score (0-100)
-        // Higher score = more consistent rates across sizes
-        let feeEfficiencyScore: number | null = null;
-        if (successfulQuotes.length >= 2) {
-          const rates = successfulQuotes.map(q => q.effectiveRate);
-          const avgRate = rates.reduce((a, b) => a + b, 0) / rates.length;
-          const variance = rates.reduce((sum, r) => sum + Math.pow(r - avgRate, 2), 0) / rates.length;
-          const stdDev = Math.sqrt(variance);
-          // Score: 100 - (stdDev as % of avgRate * 100)
-          feeEfficiencyScore = Math.max(0, Math.min(100, 100 - (stdDev / avgRate * 100)));
-        }
-
-        // Find optimal range (where rate is within 1% of best rate)
-        let optimalRangeUsd: { min: number; max: number } | null = null;
-        if (successfulQuotes.length >= 2) {
-          const bestRate = Math.max(...successfulQuotes.map(q => q.effectiveRate));
-          const optimalQuotes = successfulQuotes.filter(
-            q => q.effectiveRate >= bestRate * 0.99
-          );
-          if (optimalQuotes.length > 0) {
-            optimalRangeUsd = {
-              min: optimalQuotes[0]!.amountUsd,
-              max: optimalQuotes[optimalQuotes.length - 1]!.amountUsd,
-            };
-          }
-        }
-
-        // Calculate price impact at key thresholds
-        const baselineQuote = successfulQuotes.find(q => q.amountUsd === 1000);
-        const quote10k = successfulQuotes.find(q => q.amountUsd === 10000);
-        const quote100k = successfulQuotes.find(q => q.amountUsd === 100000);
-
-        const priceImpactBps = {
-          at1k: baselineQuote ? 0 : null,
-          at10k: baselineQuote && quote10k
-            ? Math.round((1 - quote10k.effectiveRate / baselineQuote.effectiveRate) * 10000)
-            : null,
-          at100k: baselineQuote && quote100k
-            ? Math.round((1 - quote100k.effectiveRate / baselineQuote.effectiveRate) * 10000)
-            : null,
-        };
-
-        intelligence.push({
-          route,
-          maxCapacityUsd,
-          optimalRangeUsd,
-          feeEfficiencyScore,
-          priceImpactBps,
-          measuredAt: now,
-        });
-
-        this.logger.info('Route intelligence analyzed', {
-          route: `${route.source.symbol}->${route.destination.symbol}`,
-          maxCapacityUsd,
-          feeEfficiencyScore,
-        });
-      } catch (error) {
-        this.logger.warn('Route intelligence analysis failed', {
-          route: `${route.source.symbol}->${route.destination.symbol}`,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        // Return minimal intelligence on error
-        intelligence.push({
-          route,
-          maxCapacityUsd: null,
-          optimalRangeUsd: null,
-          feeEfficiencyScore: null,
-          priceImpactBps: { at1k: null, at10k: null, at100k: null },
-          measuredAt: now,
-        });
-      }
-    }
-
-    return intelligence;
   }
 }

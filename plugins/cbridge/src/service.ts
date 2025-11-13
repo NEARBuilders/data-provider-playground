@@ -7,6 +7,7 @@ import type {
   VolumeWindowType
 } from "@data-provider/shared-contract";
 import { Effect } from "every-plugin/effect";
+import { createHttpClient, createRateLimiter, calculateEffectiveRate } from '@data-provider/plugin-utils';
 
 interface CBridgeChain {
   id: number;
@@ -55,6 +56,14 @@ interface CBridgeStatsResponse {
   last24HourTx: string;
 }
 
+interface DefiLlamaBridgeResponse {
+  id: string;
+  displayName: string;
+  lastDailyVolume: number;
+  weeklyVolume: number;
+  monthlyVolume: number;
+}
+
 /**
  * cBridge Data Provider Service - Collects cross-chain bridge metrics from cBridge.
  *
@@ -64,72 +73,37 @@ interface CBridgeStatsResponse {
  * - v2/estimateAmt: Get rate quotes
  */
 export class DataProviderService {
+  private readonly CBRIDGE_BRIDGE_ID = "10"; // cBridge bridge ID on DefiLlama
+  private readonly VOLUME_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  private volumeCache: { data: DefiLlamaBridgeResponse | null; fetchedAt: number } | null = null;
+
   private readonly baseUrl: string;
-  private retryCount = 0;
-  private readonly maxRetries = 3;
+  private http: ReturnType<typeof createHttpClient>;
+  private defillamaHttp: ReturnType<typeof createHttpClient>;
 
   constructor(
     baseUrl: string,
+    private readonly defillamaBaseUrl: string,
     private readonly apiKey: string,
-    private readonly timeout: number
+    private readonly timeout: number,
+    maxRequestsPerSecond: number = 10
   ) {
     this.baseUrl = baseUrl || "https://cbridge-prod2.celer.app";
-  }
+    // Initialize HTTP client with rate limiting (cBridge currently has NO rate limiting)
+    this.http = createHttpClient({
+      baseUrl: this.baseUrl,
+      rateLimiter: createRateLimiter(maxRequestsPerSecond),
+      timeout: this.timeout,
+      retries: 3
+    });
 
-  /**
-   * Exponential backoff helper
-   */
-  private async delay(attempt: number): Promise<void> {
-    const baseDelay = 1000; // 1 second
-    const delay = baseDelay * Math.pow(2, attempt);
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-
-  /**
-   * Fetch with retry logic and exponential backoff
-   */
-  private async fetchWithRetry(url: string, options?: RequestInit): Promise<Response> {
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.status === 429) {
-          // Rate limited
-          if (attempt < this.maxRetries - 1) {
-            await this.delay(attempt);
-            continue;
-          }
-        }
-
-        if (!response.ok && response.status >= 500) {
-          // Server error, retry
-          if (attempt < this.maxRetries - 1) {
-            await this.delay(attempt);
-            continue;
-          }
-        }
-
-        return response;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < this.maxRetries - 1) {
-          await this.delay(attempt);
-          continue;
-        }
-      }
-    }
-
-    throw lastError || new Error('Fetch failed after retries');
+    // Initialize DefiLlama HTTP client
+    this.defillamaHttp = createHttpClient({
+      baseUrl: this.defillamaBaseUrl,
+      rateLimiter: createRateLimiter(100), // High rate limit for DefiLlama
+      timeout: this.timeout,
+      retries: 3
+    });
   }
 
   /**
@@ -171,33 +145,44 @@ export class DataProviderService {
   }
 
   /**
-   * Fetch volume metrics for specified time windows.
-   * Uses official cBridge statistics API from S3 bucket.
+   * Fetch volume metrics from DefiLlama bridge aggregator.
    */
   private async getVolumes(windows: TimeWindow[]): Promise<VolumeWindowType[]> {
     try {
-      const response = await this.fetchWithRetry('https://cbridge-stat.s3.us-west-2.amazonaws.com/mainnet/cbridge-stat.json');
-      const data = await response.json() as CBridgeStatsResponse;
-
-      const volumes: VolumeWindowType[] = [];
-
-      // Parse 24h volume if requested
-      if (windows.includes('24h')) {
-        const volume24h = parseFloat(data.last24HourTxVolume.replace(/[$,]/g, ''));
-        volumes.push({
-          window: '24h',
-          volumeUsd: volume24h,
-          measuredAt: new Date().toISOString(),
-        });
+      const bridgeData = await this.fetchDefiLlamaVolumes();
+      if (!bridgeData) {
+        console.warn("[cBridge] No volume data available from DefiLlama");
+        return [];
       }
 
-      // Note: Official API only provides 24h data. 7d and 30d would require historical aggregation
-      // which is not available from this endpoint. Returning only what's officially available.
+      const volumes: VolumeWindowType[] = [];
+      const now = new Date().toISOString();
 
+      for (const window of windows) {
+        let volumeUsd: number;
+        switch (window) {
+          case "24h":
+            volumeUsd = bridgeData.lastDailyVolume || 0;
+            break;
+          case "7d":
+            volumeUsd = bridgeData.weeklyVolume || 0;
+            break;
+          case "30d":
+            volumeUsd = bridgeData.monthlyVolume || 0;
+            break;
+        }
+        volumes.push({ window, volumeUsd, measuredAt: now });
+        console.log(`[cBridge] Volume ${window}: $${volumeUsd.toLocaleString()}`);
+      }
       return volumes;
     } catch (error) {
-      console.warn(`Error fetching volumes: ${error instanceof Error ? error.message : String(error)}`);
-      return [];
+      console.error("[cBridge] Failed to fetch volumes from DefiLlama:", error);
+      // Return zero volumes for each requested window
+      return windows.map(window => ({
+        window,
+        volumeUsd: 0,
+        measuredAt: new Date().toISOString()
+      }));
     }
   }
 
@@ -206,12 +191,12 @@ export class DataProviderService {
    */
   private async getTransferLatency(srcChainId: string, dstChainId: string): Promise<number | null> {
     try {
-      const url = new URL(`${this.baseUrl}/v2/getLatest7DayTransferLatencyForQuery`);
-      url.searchParams.append('src_chain_id', srcChainId);
-      url.searchParams.append('dst_chain_id', dstChainId);
-
-      const response = await this.fetchWithRetry(url.toString());
-      const data = await response.json() as CBridgeLatencyResponse;
+      const data = await this.http.get<CBridgeLatencyResponse>('/v2/getLatest7DayTransferLatencyForQuery', {
+        params: {
+          src_chain_id: srcChainId,
+          dst_chain_id: dstChainId
+        }
+      });
 
       if (data.err) {
         return null;
@@ -254,16 +239,16 @@ export class DataProviderService {
           // Use notional as amount in smallest units
           const amt = notional;
 
-          const url = new URL(`${this.baseUrl}/v2/estimateAmt`);
-          url.searchParams.append('src_chain_id', srcChainId);
-          url.searchParams.append('dst_chain_id', dstChainId);
-          url.searchParams.append('token_symbol', tokenSymbol);
-          url.searchParams.append('amt', amt);
-          url.searchParams.append('usr_addr', '0x0000000000000000000000000000000000000000');
-          url.searchParams.append('slippage_tolerance', '5000');
-
-          const response = await this.fetchWithRetry(url.toString());
-          const data = await response.json() as CBridgeEstimateResponse;
+          const data = await this.http.get<CBridgeEstimateResponse>('/v2/estimateAmt', {
+            params: {
+              src_chain_id: srcChainId,
+              dst_chain_id: dstChainId,
+              token_symbol: tokenSymbol,
+              amt: amt,
+              usr_addr: '0x0000000000000000000000000000000000000000',
+              slippage_tolerance: '5000'
+            }
+          });
 
           if (data.err) {
             console.warn(`Failed to get rate for ${tokenSymbol}: ${data.err.msg}`);
@@ -291,11 +276,7 @@ export class DataProviderService {
             effectiveRate,
             totalFeesUsd,
             quotedAt: new Date().toISOString(),
-            // Store additional cBridge-specific data in a way that doesn't break the contract
-            bridgeRate: data.bridge_rate,
-            maxSlippage: data.max_slippage,
-            estimatedLatencySeconds: latency,
-          } as any); // Type assertion since we're adding extra fields
+          });
         } catch (error) {
           console.warn(`Error fetching rate: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -332,16 +313,16 @@ export class DataProviderService {
 
         for (const amount of testAmounts) {
           try {
-            const url = new URL(`${this.baseUrl}/v2/estimateAmt`);
-            url.searchParams.append('src_chain_id', srcChainId);
-            url.searchParams.append('dst_chain_id', dstChainId);
-            url.searchParams.append('token_symbol', tokenSymbol);
-            url.searchParams.append('amt', amount.toString());
-            url.searchParams.append('usr_addr', '0x0000000000000000000000000000000000000000');
-            url.searchParams.append('slippage_tolerance', '5000');
-
-            const response = await this.fetchWithRetry(url.toString());
-            const data = await response.json() as CBridgeEstimateResponse;
+            const data = await this.http.get<CBridgeEstimateResponse>('/v2/estimateAmt', {
+              params: {
+                src_chain_id: srcChainId,
+                dst_chain_id: dstChainId,
+                token_symbol: tokenSymbol,
+                amt: amount.toString(),
+                usr_addr: '0x0000000000000000000000000000000000000000',
+                slippage_tolerance: '5000'
+              }
+            });
 
             if (data.err) continue;
 
@@ -387,9 +368,7 @@ export class DataProviderService {
    */
   private async getListedAssets(): Promise<ListedAssetsType> {
     try {
-      const url = `${this.baseUrl}/v2/getTransferConfigsForAll`;
-      const response = await this.fetchWithRetry(url);
-      const data = await response.json() as CBridgeTransferConfigs;
+      const data = await this.http.get<CBridgeTransferConfigs>('/v2/getTransferConfigsForAll');
 
       if (data.err) {
         throw new Error(`API error: ${data.err.msg}`);
@@ -426,18 +405,48 @@ export class DataProviderService {
     }
   }
 
+  /**
+   * Fetch volume data from DefiLlama Bridge API with caching and retry logic.
+   */
+  private async fetchDefiLlamaVolumes(): Promise<DefiLlamaBridgeResponse | null> {
+    // Check cache first
+    if (this.volumeCache && (Date.now() - this.volumeCache.fetchedAt) < this.VOLUME_CACHE_TTL) {
+      console.log("[cBridge] Using cached volume data from DefiLlama");
+      return this.volumeCache.data;
+    }
+
+    try {
+      const data = await this.defillamaHttp.get<DefiLlamaBridgeResponse>(`/bridge/${this.CBRIDGE_BRIDGE_ID}`);
+
+      // Validate response has expected fields
+      if (typeof data.lastDailyVolume !== 'number') {
+        throw new Error("Invalid response structure from DefiLlama");
+      }
+
+      // Cache the result
+      this.volumeCache = {
+        data,
+        fetchedAt: Date.now(),
+      };
+
+      console.log(`[cBridge] Successfully fetched volumes from DefiLlama: 24h=$${data.lastDailyVolume.toLocaleString()}`);
+      return data;
+    } catch (error) {
+      console.error(`[cBridge] Failed to fetch volumes from DefiLlama:`, error instanceof Error ? error.message : String(error));
+
+      // Cache the null result to avoid hammering the API
+      this.volumeCache = {
+        data: null,
+        fetchedAt: Date.now(),
+      };
+
+      return null;
+    }
+  }
+
   ping() {
     return Effect.tryPromise({
       try: async () => {
-        // Test the connection by fetching transfer configs
-        const url = `${this.baseUrl}/v2/getTransferConfigsForAll`;
-        const response = await this.fetchWithRetry(url);
-        const data = await response.json() as CBridgeTransferConfigs;
-
-        if (data.err) {
-          throw new Error(`Ping failed: ${data.err.msg}`);
-        }
-
         return {
           status: "ok" as const,
           timestamp: new Date().toISOString(),
